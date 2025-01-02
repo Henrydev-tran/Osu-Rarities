@@ -6,6 +6,8 @@ import json
 import discord
 from discord.ext import commands
 
+from ossapi.enums import RankStatus
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -39,22 +41,110 @@ async def loadbmsintodatabase(ctx, msid):
     file.close()
     
     try:
-        bms = json.loads(json_object[str(msid)])
+        bms = json_object[str(msid)]
         print(bms)
     except:
-        json_object[str(msid)] = json.dumps(load_beatmapset(msid))
+        json_object[str(msid)] = load_beatmapset(msid)
         file = open("maps.json", "w")
         json.dump(json_object, file)
         file.close()
         
         bms = json.loads(json_object[str(msid)])
         
-        print(bms)
         
-        # await ctx.message.reply(f"Beatmap {bms["title"]} of ID {bms["id"]} has been loaded into the database.")
+        await ctx.message.reply(f"Beatmap {bms["title"]} of ID {bms["id"]} has been loaded into the database.")
     else:
-        # await ctx.message.reply(f"Beatmap {bms["title"]} of ID {bms["id"]} has already been loaded.")
+        bms = json.loads(json_object[str(msid)])
+        
+        await ctx.message.reply(f"Beatmap {bms["title"]} of ID {bms["id"]} has already been loaded.")
         return
     
+
+def loadbms(msid):
+    bms = None
+    
+    json_object = None
+    
+    file = open("maps.json", "r")
+    json_object = json.load(file)
+    file.close()
+    
+    try:
+        bms = json_object[str(msid)]
+    except:
+        try:
+            json_object[str(msid)] = load_beatmapset(msid)
+        except:
+            return 1
+        file = open("maps.json", "w")
+        json.dump(json_object, file)
+        file.close()
+    else:
+        return 1
+    
+    return 0
+
+def add_blacklist(id):
+    file = open("beatmapblacklist.json", "r")
+    json_object = json.load(file)
+    file.close()
+    
+    json_object.append(id)
+    print(len(json_object))
+    
+    file = open("beatmapblacklist.json", "w")
+    json.dump(json_object, file)
+    file.close()
+    
+def check_blacklist(id):
+    file = open("beatmapblacklist.json", "r")
+    json_object = json.load(file)
+    file.close()
+    
+    return id in json_object
+
+def load_randombms():
+    # I have no idea what this code is
+    
+    id = random.randint(1, 2200000)
+    
+    while check_blacklist(id):
+        id = random.randint(1, 2200000)
+        
+    result = None
+    
+    while True:
+        try:
+            while check_blacklist(id):
+                id = random.randint(1, 2200000)
+            
+            result = load_beatmapset(id)
+            break
+        except:
+            add_blacklist(id)
+            id = random.randint(1, 2200000)
+    
+    while json.loads(result)["status"] != 4 and json.loads(result)["status"] != 1:
+        add_blacklist(id)
+        id = random.randint(1, 2200000)
+        while True:
+            try:
+                while check_blacklist(id):
+                    id = random.randint(1, 2200000)
+                
+                result = load_beatmapset(id)
+                break
+            except:
+                add_blacklist(id)
+                id = random.randint(1, 2200000)
+    
+    loadbms(id)
+    
+    print(f"Mapset with ID: {id} loaded")
+        
+@client.command("bulkload_random")
+async def bulkloadrand(ctx, amount):
+    for i in range(int(amount)):
+        load_randombms()
 
 client.run(os.getenv("token"))

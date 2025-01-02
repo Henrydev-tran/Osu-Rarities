@@ -1,12 +1,13 @@
 from raritycalculation import Calculate_Rarity
 
 class Beatmap:
-    def __init__(self, id, title, artist, difficulties, mapper) -> None:
+    def __init__(self, id, title, artist, difficulties, mapper, status) -> None:
         self.id = id
         self.title = title
         self.artist = artist
         self.difficulties = difficulties
         self.mapper = mapper
+        self.status = status
 
 
 class Beatmap_Difficulty:

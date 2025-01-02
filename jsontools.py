@@ -16,7 +16,8 @@ def Beatmap_To_Json(beatmap):
         "title": beatmap.title,
         "artist": beatmap.artist,
         "difficulties": difficulties,
-        "mapper": beatmap.mapper
+        "mapper": beatmap.mapper,
+        "status": beatmap.status
     }
     
     return json.dumps(result)
