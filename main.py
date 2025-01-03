@@ -84,67 +84,11 @@ def loadbms(msid):
     
     return 0
 
-def add_blacklist(id):
-    file = open("beatmapblacklist.json", "r")
-    json_object = json.load(file)
-    file.close()
+@client.command("load_next")
+async def loadnext_page(ctx):
+    loadnpage()
     
-    json_object.append(id)
-    print(len(json_object))
+    await ctx.message.reply("Loaded 50 new beatmaps into the database")
     
-    file = open("beatmapblacklist.json", "w")
-    json.dump(json_object, file)
-    file.close()
-    
-def check_blacklist(id):
-    file = open("beatmapblacklist.json", "r")
-    json_object = json.load(file)
-    file.close()
-    
-    return id in json_object
-
-def load_randombms():
-    # I have no idea what this code is
-    
-    id = random.randint(1, 2200000)
-    
-    while check_blacklist(id):
-        id = random.randint(1, 2200000)
-        
-    result = None
-    
-    while True:
-        try:
-            while check_blacklist(id):
-                id = random.randint(1, 2200000)
-            
-            result = load_beatmapset(id)
-            break
-        except:
-            add_blacklist(id)
-            id = random.randint(1, 2200000)
-    
-    while json.loads(result)["status"] != 4 and json.loads(result)["status"] != 1:
-        add_blacklist(id)
-        id = random.randint(1, 2200000)
-        while True:
-            try:
-                while check_blacklist(id):
-                    id = random.randint(1, 2200000)
-                
-                result = load_beatmapset(id)
-                break
-            except:
-                add_blacklist(id)
-                id = random.randint(1, 2200000)
-    
-    loadbms(id)
-    
-    print(f"Mapset with ID: {id} loaded")
-        
-@client.command("bulkload_random")
-async def bulkloadrand(ctx, amount):
-    for i in range(int(amount)):
-        load_randombms()
 
 client.run(os.getenv("token"))

@@ -1,11 +1,17 @@
 def Calculate_Rarity(sr):
     rarity = 0
+    newsr = str(sr)
 
-    split_sr = str(sr).split(".")
+    if not "." in newsr:
+        newsr += ".00"
+        
+    print(newsr)
+        
+    split_sr = str(newsr).split(".")
     basic_sr = int(split_sr[0])
     decimals = split_sr[1]
-    decimals += "0"
-
+    decimals += "00"
+    
     if basic_sr == 1:
         rarity += 2
     elif basic_sr == 2:
