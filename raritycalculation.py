@@ -12,6 +12,8 @@ def Calculate_Rarity(sr):
     decimals = split_sr[1]
     decimals += "00"
     
+    print(basic_sr)
+    
     if basic_sr == 1:
         rarity += 2
     elif basic_sr == 2:
@@ -48,6 +50,8 @@ def Calculate_Rarity(sr):
     buff2 = int(decimals[1]) / 10
 
     rarity += ((buff1+buff2)/4) * rarity
+    
+    print(rarity)
 
     return round(rarity)
 

@@ -90,5 +90,24 @@ async def loadnext_page(ctx):
     
     await ctx.message.reply("Loaded 50 new beatmaps into the database")
     
+@client.command("load_multipages")
+async def loadmanypages(ctx, num):
+    amount_maps = 0
+    
+    for i in range(int(num)):
+        loadnpage()
+        amount_maps += 50
+    
+    await ctx.message.reply(f"{amount_maps} maps has been loaded!")
+    
+@client.command("mapsloaded")
+async def loadedamount(ctx):
+    file = open("maps.json", "r")
+    json_object = json.load(file)
+    file.close()
+    
+    await ctx.message.reply(f"This bot has loaded {len(json_object)} maps into its database.")
+    
+    
 
 client.run(os.getenv("token"))
