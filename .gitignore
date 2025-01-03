@@ -51,6 +51,8 @@ coverage.xml
 .pytest_cache/
 cover/
 
+.count
+
 # Translations
 *.mo
 *.pot
@@ -169,6 +171,7 @@ senv/
 json/
 .logs/
 logs/
+.json
 
 # I dont know what this is
 .idea/

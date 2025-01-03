@@ -56,7 +56,7 @@ def load_object_indatabase(bmsobj):
     return 0 
 
 def loadnpage():
-    file = open("bmpage.txt", "r")
+    file = open("bmpage.count", "r")
     page = int(file.read())
     file.close()
     
@@ -78,6 +78,6 @@ def loadnpage():
         
         
     
-    file = open("bmpage.txt", "w")
+    file = open("bmpage.count", "w")
     file.write(str(page))
     file.close()
