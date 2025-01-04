@@ -19,7 +19,7 @@ def load_beatmapset(id):
     diffs = []
 
     for i in beatmap.beatmaps:        
-        difficulty = Beatmap_Difficulty(i.difficulty_rating, beatmap.id, i.id)
+        difficulty = Beatmap_Difficulty(i.difficulty_rating, beatmap.id, i.id, beatmap.title, beatmap.artist)
         diffs.append(difficulty)
         
     print(beatmap.status)
@@ -28,14 +28,14 @@ def load_beatmapset(id):
     
     return Beatmap_To_Json(loaded_beatmap)
 
-def Json_to_Beatmap(json_data):
+def Dict_to_Beatmap(dict_data):
     diffs = []
     
-    for i in json_data["difficulties"]:        
-        difficulty = Beatmap_Difficulty(i["star_rating"], i["parent_id"], i["id"])
+    for i in dict_data["difficulties"]:        
+        difficulty = Beatmap_Difficulty(i["star_rating"], i["parent_id"], i["id"], i["title"], i["artist"])
         diffs.append(difficulty)
         
-    return Beatmap(json_data["id"], json_data["title"], json_data["artist"], diffs, json_data["mapper"], json_data["status"])
+    return Beatmap(dict_data["id"], dict_data["title"], dict_data["artist"], diffs, dict_data["mapper"], dict_data["status"])
 
 def load_object_indatabase(bmsobj):
     bms = None
@@ -68,7 +68,7 @@ def loadnpage():
         diffs = []
     
         for y in i.beatmaps:
-            diffs.append(Beatmap_Difficulty(y.difficulty_rating, y.beatmapset_id, y.id))
+            diffs.append(Beatmap_Difficulty(y.difficulty_rating, y.beatmapset_id, y.id, i.title, i.artist))
             
         mapset = Beatmap(i.id, i.title, i.artist, diffs, i.creator, i.status)
         

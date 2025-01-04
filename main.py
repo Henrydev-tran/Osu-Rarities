@@ -49,12 +49,12 @@ async def loadbmsintodatabase(ctx, msid):
         json.dump(json_object, file)
         file.close()
         
-        bms = json.loads(json_object[str(msid)])
+        bms = json_object[str(msid)]
         
         
         await ctx.message.reply(f"Beatmap {bms["title"]} of ID {bms["id"]} has been loaded into the database.")
     else:
-        bms = json.loads(json_object[str(msid)])
+        bms = json_object[str(msid)]
         
         await ctx.message.reply(f"Beatmap {bms["title"]} of ID {bms["id"]} has already been loaded.")
         return

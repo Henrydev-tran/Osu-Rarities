@@ -8,7 +8,9 @@ def Beatmap_To_Json(beatmap):
             "id": i.id,
             "star_rating": i.sr,
             "parent_id": i.parent_id,
-            "rarity": i.rarity
+            "rarity": i.rarity,
+            "title": i.title,
+            "artist": i.artist
         })
     
     result = {
@@ -20,4 +22,16 @@ def Beatmap_To_Json(beatmap):
         "status": beatmap.status
     }
     
-    return json.dumps(result)
+    return result
+
+def BeatmapDiff_To_Dict(beatmap):
+    result = {
+        "id": beatmap.id,
+        "title": beatmap.title,
+        "artist": beatmap.artist,
+        "parent_id": beatmap.parent_id,
+        "star_rating": beatmap.sr,
+        "rarity": beatmap.rarity
+    }
+    
+    return result
