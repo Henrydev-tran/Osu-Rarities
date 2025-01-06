@@ -35,3 +35,17 @@ def BeatmapDiff_To_Dict(beatmap):
     }
     
     return result
+
+def BeatmapDiffNormalized_To_Dict(beatmap):
+    result = {
+        "id": beatmap.id,
+        "title": beatmap.title,
+        "artist": beatmap.artist,
+        "parent_id": beatmap.parent_id,
+        "star_rating": beatmap.sr,
+        "rarity": beatmap.rarity,
+        "normalized_probability": beatmap.normalized_probability,
+        "range": beatmap.range
+    }
+    
+    return result

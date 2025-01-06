@@ -17,3 +17,14 @@ class Beatmap_Difficulty:
         self.parent_id = parent_id
         self.title = title
         self.artist = artist
+        
+class Beatmap_Difficulty_Normalized_Range:
+    def __init__(self, sr, parent_id, id, title, artist, Nmz_p, R, rarity) -> None:
+        self.id = id
+        self.sr = sr
+        self.rarity = rarity
+        self.parent_id = parent_id
+        self.title = title
+        self.artist = artist
+        self.normalized_probability = Nmz_p
+        self.range = R
