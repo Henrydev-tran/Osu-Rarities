@@ -188,10 +188,10 @@ async def clear_sorted_diffs_cmd(ctx):
     await ctx.message.reply("You do not have the permission to use this command.")
     
 @client.command("help")
-async def help(ctx, member : discord.Member):
+async def help(ctx):
     await ctx.message.reply("Check DMs.")
-
-    await member.send("""Prefix - o!
+    
+    await ctx.author.send("""Prefix - o!
 ping - Check status of Bot. example: o!ping.
 calculaterarity - Calculate rarity of a given star rating. Arguments: <sr>. example: o!calculaterarity 7.86.
 load_beatmapset - Returns json data of a beatmapset with a given bms id. Arguments: <bms_id>. example: o!load_beatmapset 2288709.
