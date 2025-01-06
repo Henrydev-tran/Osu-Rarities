@@ -20,6 +20,7 @@ from loadmaps import *
 from probabilitycalc import *
 
 client = commands.Bot(command_prefix='o!', intents=discord.Intents(messages=True, guilds=True, message_content=True))
+client.remove_command("help")
 
 @client.command('ping')
 async def ping(ctx):
