@@ -70,5 +70,3 @@ def add_normalized_diffs_to_sorted_file():
     file = open("sorteddiffs.json", "w")
     json.dump(maps, file)
     file.close()
-
-add_normalized_diffs_to_sorted_file()

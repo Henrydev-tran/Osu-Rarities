@@ -3,6 +3,8 @@ import random
 import copy
 import json
 
+import asyncio
+
 import discord
 from discord.ext import commands
 
@@ -15,6 +17,7 @@ load_dotenv()
 from raritycalculation import Calculate_Rarity
 from jsontools import Beatmap_To_Json
 from loadmaps import *
+from probabilitycalc import *
 
 client = commands.Bot(command_prefix='o!', intents=discord.Intents(messages=True, guilds=True, message_content=True))
 
@@ -108,6 +111,63 @@ async def loadedamount(ctx):
     
     await ctx.message.reply(f"This bot has loaded {len(json_object)} maps into its database.")
     
+@client.command("load_diffs_sorted")
+async def load_nmz_diffs(ctx):
+    add_diffs_to_sorted_file()
     
+    await ctx.message.reply("Done.")    
+    
+@client.command("load_normalized_diffs")
+async def load_nmz_diffs(ctx):
+    add_normalized_diffs_to_sorted_file()
+    
+    await ctx.message.reply("Done.")
+
+@client.command("clear_all_maps")
+async def clear_maps_cmd(ctx):
+    if ctx.author.id == 718102801242259466:
+        file = open("maps.json", "r")
+        json_object = json.load(file)
+        file.close()
+        
+        await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} maps gets cleared")
+        
+        await asyncio.sleep(20)
+        
+        file = open("maps.json", "w")
+        file.write("{}")
+        file.close()
+        
+        file = open("bmpage.count", "w")
+        file.write("0")
+        file.close()
+        
+        await ctx.message.reply("All maps have been cleared.")
+        
+        return
+    
+    await ctx.message.reply("You do not have the permission to use this command.")
+        
+
+@client.command("clear_sorted_diffs")
+async def clear_sorted_diffs_cmd(ctx):
+    if ctx.author.id == 718102801242259466:
+        file = open("sorteddiffs.json", "r")
+        json_object = json.load(file)
+        file.close()
+        
+        await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} difficulties gets cleared")
+        
+        await asyncio.sleep(20)
+        
+        file = open("sorteddiffs.json", "w")
+        file.write("[]")
+        file.close()
+        
+        await ctx.message.reply("All difficulties have been cleared.")
+        
+        return
+    
+    await ctx.message.reply("You do not have the permission to use this command.")
 
 client.run(os.getenv("token"))
