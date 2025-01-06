@@ -45,7 +45,6 @@ async def loadbmsintodatabase(ctx, msid):
     
     try:
         bms = json_object[str(msid)]
-        print(bms)
     except:
         json_object[str(msid)] = load_beatmapset(msid)
         file = open("maps.json", "w")

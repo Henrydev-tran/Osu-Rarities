@@ -21,8 +21,6 @@ def load_beatmapset(id):
     for i in beatmap.beatmaps:        
         difficulty = Beatmap_Difficulty(i.difficulty_rating, beatmap.id, i.id, beatmap.title, beatmap.artist)
         diffs.append(difficulty)
-        
-    print(beatmap.status)
     
     loaded_beatmap = Beatmap(beatmap.id, beatmap.title, beatmap.artist, diffs, beatmap.creator, beatmap.status)
     

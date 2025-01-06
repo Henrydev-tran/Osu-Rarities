@@ -5,14 +5,10 @@ def Calculate_Rarity(sr):
     if not "." in newsr:
         newsr += ".00"
         
-    print(newsr)
-        
     split_sr = str(newsr).split(".")
     basic_sr = int(split_sr[0])
     decimals = split_sr[1]
     decimals += "00"
-    
-    print(basic_sr)
     
     if basic_sr == 1:
         rarity += 2
@@ -50,8 +46,6 @@ def Calculate_Rarity(sr):
     buff2 = int(decimals[1]) / 10
 
     rarity += ((buff1+buff2)/4) * rarity
-    
-    print(rarity)
 
     return round(rarity)
 
