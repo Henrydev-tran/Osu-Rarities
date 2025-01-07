@@ -6,7 +6,7 @@ from beatmap import Beatmap_Difficulty_Normalized_Range
 import random
 import bisect
 
-def add_diffs_to_sorted_file():
+async def add_diffs_to_sorted_file():
     json_object = None
     
     file = open("maps.json", "r")
@@ -18,16 +18,16 @@ def add_diffs_to_sorted_file():
     for key in json_object:       
         loaded_json = json_object[key]
         
-        beatmap = Dict_to_Beatmap(loaded_json)
+        beatmap = await Dict_to_Beatmap(loaded_json)
         
         for i in beatmap.difficulties:
-            maps.append(BeatmapDiff_To_Dict(i))
+            maps.append(await BeatmapDiff_To_Dict(i))
             
     file = open("sorteddiffs.json", "w")
     json.dump(maps, file)
     file.close()
     
-def load_all_diffs():
+async def load_all_diffs():
     json_object = None
     
     file = open("sorteddiffs.json", "r")
@@ -36,8 +36,8 @@ def load_all_diffs():
     
     return json_object
     
-def calculate_normalized_probabilities():
-    maps = load_all_diffs()
+async def calculate_normalized_probabilities():
+    maps = await load_all_diffs()
     
     sum = 0
     
@@ -53,7 +53,7 @@ def calculate_normalized_probabilities():
         print(y["rarity"])
         normalized_probability = (1/y["rarity"])/sum
         
-        beatmap = Beatmap_Difficulty_Normalized_Range(y["star_rating"], y["parent_id"], y["id"], y["title"], y["artist"], '%.20f' % normalized_probability, current_range, y["rarity"])
+        beatmap = Beatmap_Difficulty_Normalized_Range(y["star_rating"], y["parent_id"], y["id"], y["title"], y["artist"], '%.20f' % normalized_probability, current_range, y["rarity"], y["difficulty_name"])
         
         current_range += normalized_probability
 
@@ -61,13 +61,13 @@ def calculate_normalized_probabilities():
         
     return normalized_maps
         
-def add_normalized_diffs_to_sorted_file():
-    object = calculate_normalized_probabilities()
+async def add_normalized_diffs_to_sorted_file():
+    object = await calculate_normalized_probabilities()
     
     maps = []
     
     for i in object:
-        maps.append(BeatmapDiffNormalized_To_Dict(i))
+        maps.append(await BeatmapDiffNormalized_To_Dict(i))
             
     file = open("sorteddiffs.json", "w")
     json.dump(maps, file)
@@ -75,7 +75,7 @@ def add_normalized_diffs_to_sorted_file():
     
     return maps
 
-def get_normalized_diffs():
+async def get_normalized_diffs():
     json_obj = None
     
     file = open("sorteddiffs.json", "r")
@@ -84,8 +84,8 @@ def get_normalized_diffs():
     
     return json_obj
     
-def add_ranges_to_file():
-    norm_diffs = get_normalized_diffs()
+async def add_ranges_to_file():
+    norm_diffs = await get_normalized_diffs()
     
     ranges = []
 
@@ -98,14 +98,14 @@ def add_ranges_to_file():
     
     return ranges
 
-def get_amount_beatmaps():
+async def get_amount_beatmaps():
     file = open("sorteddiffs.json", "r")
     json_object = json.load(file)
     file.close()
     
     return len(json_object)
 
-def get_ranges():
+async def get_ranges():
     ranges = None
     
     file = open("ranges.json", "r")
@@ -114,21 +114,21 @@ def get_ranges():
     
     return ranges
 
-def get_random_index():
+async def get_random_index():
     random_number = '%.20f' % random.random()
     
-    ranges = get_ranges()
+    ranges = await get_ranges()
     
     index = bisect.bisect_left(ranges, random_number)
     
     return index
 
-def get_random_map():
-    random_index = get_random_index()
+async def get_random_map():
+    random_index = await get_random_index()
     
-    maps = get_normalized_diffs()
+    maps = await get_normalized_diffs()
     
     print(random_index)
-    print(get_amount_beatmaps())
+    print(await get_amount_beatmaps())
     
     return maps[random_index]

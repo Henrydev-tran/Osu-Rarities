@@ -32,7 +32,7 @@ async def calcrare(ctx, sr):
     
 @client.command("load_beatmapset")
 async def loadbms(ctx, bms):
-    await ctx.message.reply(load_beatmapset(bms))
+    await ctx.message.reply(await load_beatmapset(bms))
     
 @client.command("loadbms_intodatabase")
 async def loadbmsintodatabase(ctx, msid):
@@ -48,7 +48,7 @@ async def loadbmsintodatabase(ctx, msid):
         try:
             bms = json_object[str(msid)]
         except:
-            json_object[str(msid)] = load_beatmapset(msid)
+            json_object[str(msid)] = await load_beatmapset(msid)
             file = open("maps.json", "w")
             json.dump(json_object, file)
             file.close()
@@ -68,7 +68,7 @@ async def loadbmsintodatabase(ctx, msid):
     await ctx.message.reply("You do not have the permission to use this command.")  
     
 
-def loadbms(msid):
+async def loadbms(msid):
     bms = None
     
     json_object = None
@@ -81,7 +81,7 @@ def loadbms(msid):
         bms = json_object[str(msid)]
     except:
         try:
-            json_object[str(msid)] = load_beatmapset(msid)
+            json_object[str(msid)] = await load_beatmapset(msid)
         except:
             return 1
         file = open("maps.json", "w")
@@ -95,7 +95,7 @@ def loadbms(msid):
 @client.command("load_next")
 async def loadnext_page(ctx):
     if ctx.author.id == 718102801242259466:
-        loadnpage()
+        await loadnpage()
         
         await ctx.message.reply("Loaded 50 new beatmaps into the database")
         
@@ -109,7 +109,7 @@ async def loadmanypages(ctx, num):
         amount_maps = 0
         
         for i in range(int(num)):
-            loadnpage()
+            await loadnpage()
             amount_maps += 50
         
         await ctx.message.reply(f"{amount_maps} maps has been loaded!")
@@ -129,7 +129,7 @@ async def loadedamount(ctx):
 @client.command("load_diffs_sorted")
 async def load_nmz_diffs(ctx):
     if ctx.author.id == 718102801242259466:
-        add_diffs_to_sorted_file()
+        await add_diffs_to_sorted_file()
         
         await ctx.message.reply("Done.")
         
@@ -140,7 +140,7 @@ async def load_nmz_diffs(ctx):
 @client.command("calculate_ranges")
 async def load_nmz_diffs(ctx):
     if ctx.author.id == 718102801242259466:
-        add_ranges_to_file()
+        await add_ranges_to_file()
         
         await ctx.message.reply("Done.")
         
@@ -151,7 +151,7 @@ async def load_nmz_diffs(ctx):
 @client.command("load_normalized_diffs")
 async def load_nmz_diffs(ctx):
     if ctx.author.id == 718102801242259466:
-        add_normalized_diffs_to_sorted_file()
+        await add_normalized_diffs_to_sorted_file()
         
         await ctx.message.reply("Done.")
         
@@ -161,7 +161,9 @@ async def load_nmz_diffs(ctx):
     
 @client.command("roll")
 async def roll_random(ctx):
-    await ctx.message.reply(get_random_map())
+    result = await get_random_map()
+    
+    await ctx.message.reply(f"Rolled {result["title"]}[{result["difficulty_name"]}] with Star Rating of {result["star_rating"]} and Rarity of {result["rarity"]}")
 
 @client.command("clear_all_maps")
 async def clear_maps_cmd(ctx):

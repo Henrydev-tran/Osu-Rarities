@@ -1,6 +1,6 @@
 import json
 
-def Beatmap_To_Json(beatmap):
+async def Beatmap_To_Json(beatmap):
     difficulties = []
     
     for i in beatmap.difficulties:
@@ -10,7 +10,8 @@ def Beatmap_To_Json(beatmap):
             "parent_id": i.parent_id,
             "rarity": i.rarity,
             "title": i.title,
-            "artist": i.artist
+            "artist": i.artist,
+            "difficulty_name": i.difficulty_name
         })
     
     result = {
@@ -24,19 +25,20 @@ def Beatmap_To_Json(beatmap):
     
     return result
 
-def BeatmapDiff_To_Dict(beatmap):
+async def BeatmapDiff_To_Dict(beatmap):
     result = {
         "id": beatmap.id,
         "title": beatmap.title,
         "artist": beatmap.artist,
         "parent_id": beatmap.parent_id,
         "star_rating": beatmap.sr,
-        "rarity": beatmap.rarity
+        "rarity": beatmap.rarity,
+        "difficulty_name": beatmap.difficulty_name
     }
     
     return result
 
-def BeatmapDiffNormalized_To_Dict(beatmap):
+async def BeatmapDiffNormalized_To_Dict(beatmap):
     result = {
         "id": beatmap.id,
         "title": beatmap.title,
@@ -45,7 +47,8 @@ def BeatmapDiffNormalized_To_Dict(beatmap):
         "star_rating": beatmap.sr,
         "rarity": beatmap.rarity,
         "normalized_probability": beatmap.normalized_probability,
-        "range": beatmap.range
+        "range": beatmap.range,
+        "difficulty_name": beatmap.difficulty_name
     }
     
     return result
