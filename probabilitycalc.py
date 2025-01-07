@@ -4,6 +4,7 @@ from loadmaps import Dict_to_Beatmap
 from jsontools import BeatmapDiff_To_Dict, BeatmapDiffNormalized_To_Dict
 from beatmap import Beatmap_Difficulty_Normalized_Range
 import random
+import bisect
 
 def add_diffs_to_sorted_file():
     json_object = None
@@ -43,15 +44,16 @@ def calculate_normalized_probabilities():
     normalized_maps = []
     
     for i in maps:
-        difficulty = i["rarity"]
+        difficulty = 1/i["rarity"]
         sum += difficulty
         
     current_range = 0
         
     for y in maps:
-        normalized_probability = y["rarity"]/sum
+        print(y["rarity"])
+        normalized_probability = (1/y["rarity"])/sum
         
-        beatmap = Beatmap_Difficulty_Normalized_Range(y["star_rating"], y["parent_id"], y["id"], y["title"], y["artist"], normalized_probability, current_range, y["rarity"])
+        beatmap = Beatmap_Difficulty_Normalized_Range(y["star_rating"], y["parent_id"], y["id"], y["title"], y["artist"], '%.20f' % normalized_probability, current_range, y["rarity"])
         
         current_range += normalized_probability
 
@@ -70,3 +72,63 @@ def add_normalized_diffs_to_sorted_file():
     file = open("sorteddiffs.json", "w")
     json.dump(maps, file)
     file.close()
+    
+    return maps
+
+def get_normalized_diffs():
+    json_obj = None
+    
+    file = open("sorteddiffs.json", "r")
+    json_obj = json.load(file)
+    file.close()
+    
+    return json_obj
+    
+def add_ranges_to_file():
+    norm_diffs = get_normalized_diffs()
+    
+    ranges = []
+
+    for i in norm_diffs:
+        ranges.append('%.20f' % i["range"])
+    
+    file = open("ranges.json", "w")
+    json.dump(ranges, file)
+    file.close()
+    
+    return ranges
+
+def get_amount_beatmaps():
+    file = open("sorteddiffs.json", "r")
+    json_object = json.load(file)
+    file.close()
+    
+    return len(json_object)
+
+def get_ranges():
+    ranges = None
+    
+    file = open("ranges.json", "r")
+    ranges = json.load(file)
+    file.close()
+    
+    return ranges
+
+def get_random_index():
+    random_number = '%.20f' % random.random()
+    
+    ranges = get_ranges()
+    
+    index = bisect.bisect_left(ranges, random_number)
+    
+    return index
+
+def get_random_map():
+    random_index = get_random_index()
+    
+    maps = get_normalized_diffs()
+    
+    print(random_index)
+    print(get_amount_beatmaps())
+    
+    return maps[random_index]

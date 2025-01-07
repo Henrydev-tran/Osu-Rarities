@@ -11,7 +11,7 @@ def Calculate_Rarity(sr):
     decimals += "00"
     
     if basic_sr == 1:
-        rarity += 2
+        rarity += 3
     elif basic_sr == 2:
         rarity += 7
     elif basic_sr == 3:
@@ -40,6 +40,8 @@ def Calculate_Rarity(sr):
         rarity += 10000000000
     elif basic_sr >= 15:
         rarity += 75000000000
+    elif basic_sr < 1:
+        rarity += 2
     
 
     buff1 = int(decimals[0])
