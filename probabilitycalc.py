@@ -53,7 +53,7 @@ async def calculate_normalized_probabilities():
         print(y["rarity"])
         normalized_probability = (1/y["rarity"])/sum
         
-        beatmap = Beatmap_Difficulty_Normalized_Range(y["star_rating"], y["parent_id"], y["id"], y["title"], y["artist"], '%.20f' % normalized_probability, current_range, y["rarity"], y["difficulty_name"])
+        beatmap = Beatmap_Difficulty_Normalized_Range(y["star_rating"], y["parent_id"], y["id"], y["title"], y["artist"], '%.25f' % normalized_probability, current_range, y["rarity"], y["difficulty_name"])
         
         current_range += normalized_probability
 
@@ -90,7 +90,7 @@ async def add_ranges_to_file():
     ranges = []
 
     for i in norm_diffs:
-        ranges.append('%.20f' % i["range"])
+        ranges.append('%.25f' % i["range"])
     
     file = open("ranges.json", "w")
     json.dump(ranges, file)
@@ -115,7 +115,9 @@ async def get_ranges():
     return ranges
 
 async def get_random_index():
-    random_number = '%.20f' % random.random()
+    random_number = '%.25f' % random.random()
+    
+    print(random_number)
     
     ranges = await get_ranges()
     
@@ -127,6 +129,10 @@ async def get_random_map():
     random_index = await get_random_index()
     
     maps = await get_normalized_diffs()
+
+    print(maps[random_index]["normalized_probability"])
+    print(maps[random_index]["rarity"])
+    print(maps[random_index]["star_rating"])
     
     print(random_index)
     print(await get_amount_beatmaps())

@@ -163,7 +163,7 @@ async def load_nmz_diffs(ctx):
 async def roll_random(ctx):
     result = await get_random_map()
     
-    await ctx.message.reply(f"Rolled {result["title"]}[{result["difficulty_name"]}] with Star Rating of {result["star_rating"]} and Rarity of {result["rarity"]}")
+    await ctx.message.reply(f"Rolled {result["title"]}[{result["difficulty_name"]}] with Star Rating of {result["star_rating"]} and Rarity of 1 in {result["rarity"]}")
 
 @client.command("clear_all_maps")
 async def clear_maps_cmd(ctx):
@@ -225,5 +225,24 @@ load_beatmapset - Returns json data of a beatmapset with a given bms id. Argumen
 mapsloaded - Check how many maps has been loaded into the database. example: o!mapsloaded.
 help - Shows this message.
 7 more dev-only commands.""")
+    
+@client.command("recalculate_rarities")
+async def recalculate_rarities(ctx):
+    if ctx.author.id == 718102801242259466:
+        file = open("maps.json", "r")
+        json_object = json.load(file)
+        file.close()
+        
+        for i in json_object:
+            for y in json_object[i]["difficulties"]:
+                y["rarity"] = Calculate_Rarity(y["star_rating"])
+                
+        file = open("maps.json", "w")
+        json.dump(json_object, file)
+        file.close()
+                
+        await ctx.message.reply("Done.")
+        
+    await ctx.message.reply("You do not have the permission to use this command.")
 
 client.run(os.getenv("token"))
