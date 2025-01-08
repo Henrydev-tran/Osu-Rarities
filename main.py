@@ -241,6 +241,8 @@ async def recalculate_rarities(ctx):
                 
         await ctx.message.reply("Done.")
         
+        return
+        
     await ctx.message.reply("You do not have the permission to use this command.")
 
 client.run(os.getenv("token"))
