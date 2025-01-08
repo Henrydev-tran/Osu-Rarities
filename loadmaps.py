@@ -39,14 +39,14 @@ async def Dict_to_Beatmap(dict_data):
 async def load_object_indatabase(bmsobj):
     bms = None
     
-    file = open("maps.json", "r")
+    file = open("json/maps.json", "r")
     json_object = json.load(file)
     file.close()
     try:
         bms = json_object[str(bmsobj.id)]
     except:
         json_object[str(bmsobj.id)] = await Beatmap_To_Json(bmsobj)
-        file = open("maps.json", "w")
+        file = open("json/maps.json", "w")
         json.dump(json_object, file)
         file.close()
     else:
@@ -55,7 +55,7 @@ async def load_object_indatabase(bmsobj):
     return 0 
 
 async def loadnpage():
-    file = open("bmpage.count", "r")
+    file = open("json/bmpage.count", "r")
     page = int(file.read())
     file.close()
     
@@ -77,6 +77,6 @@ async def loadnpage():
         
         
     
-    file = open("bmpage.count", "w")
+    file = open("json/bmpage.count", "w")
     file.write(str(page))
     file.close()

@@ -9,7 +9,7 @@ import bisect
 async def add_diffs_to_sorted_file():
     json_object = None
     
-    file = open("maps.json", "r")
+    file = open("json/maps.json", "r")
     json_object = json.load(file)
     file.close()
     
@@ -23,14 +23,14 @@ async def add_diffs_to_sorted_file():
         for i in beatmap.difficulties:
             maps.append(await BeatmapDiff_To_Dict(i))
             
-    file = open("sorteddiffs.json", "w")
+    file = open("json/sorteddiffs.json", "w")
     json.dump(maps, file)
     file.close()
     
 async def load_all_diffs():
     json_object = None
     
-    file = open("sorteddiffs.json", "r")
+    file = open("json/sorteddiffs.json", "r")
     json_object = json.load(file)
     file.close()
     
@@ -69,7 +69,7 @@ async def add_normalized_diffs_to_sorted_file():
     for i in object:
         maps.append(await BeatmapDiffNormalized_To_Dict(i))
             
-    file = open("sorteddiffs.json", "w")
+    file = open("json/sorteddiffs.json", "w")
     json.dump(maps, file)
     file.close()
     
@@ -78,7 +78,7 @@ async def add_normalized_diffs_to_sorted_file():
 async def get_normalized_diffs():
     json_obj = None
     
-    file = open("sorteddiffs.json", "r")
+    file = open("json/sorteddiffs.json", "r")
     json_obj = json.load(file)
     file.close()
     
@@ -92,14 +92,14 @@ async def add_ranges_to_file():
     for i in norm_diffs:
         ranges.append('%.25f' % i["range"])
     
-    file = open("ranges.json", "w")
+    file = open("json/ranges.json", "w")
     json.dump(ranges, file)
     file.close()
     
     return ranges
 
 async def get_amount_beatmaps():
-    file = open("sorteddiffs.json", "r")
+    file = open("json/sorteddiffs.json", "r")
     json_object = json.load(file)
     file.close()
     
@@ -108,7 +108,7 @@ async def get_amount_beatmaps():
 async def get_ranges():
     ranges = None
     
-    file = open("ranges.json", "r")
+    file = open("json/ranges.json", "r")
     ranges = json.load(file)
     file.close()
     

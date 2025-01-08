@@ -8,8 +8,6 @@ import asyncio
 import discord
 from discord.ext import commands
 
-from ossapi.enums import RankStatus
-
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -41,7 +39,7 @@ async def loadbmsintodatabase(ctx, msid):
         
         json_object = None
         
-        file = open("maps.json", "r")
+        file = open("json/maps.json", "r")
         json_object = json.load(file)
         file.close()
         
@@ -49,7 +47,7 @@ async def loadbmsintodatabase(ctx, msid):
             bms = json_object[str(msid)]
         except:
             json_object[str(msid)] = await load_beatmapset(msid)
-            file = open("maps.json", "w")
+            file = open("json/maps.json", "w")
             json.dump(json_object, file)
             file.close()
             
@@ -73,7 +71,7 @@ async def loadbms(msid):
     
     json_object = None
     
-    file = open("maps.json", "r")
+    file = open("json/maps.json", "r")
     json_object = json.load(file)
     file.close()
     
@@ -84,7 +82,7 @@ async def loadbms(msid):
             json_object[str(msid)] = await load_beatmapset(msid)
         except:
             return 1
-        file = open("maps.json", "w")
+        file = open("json/maps.json", "w")
         json.dump(json_object, file)
         file.close()
     else:
@@ -120,7 +118,7 @@ async def loadmanypages(ctx, num):
     
 @client.command("mapsloaded")
 async def loadedamount(ctx):
-    file = open("maps.json", "r")
+    file = open("json/maps.json", "r")
     json_object = json.load(file)
     file.close()
     
@@ -168,7 +166,7 @@ async def roll_random(ctx):
 @client.command("clear_all_maps")
 async def clear_maps_cmd(ctx):
     if ctx.author.id == 718102801242259466:
-        file = open("maps.json", "r")
+        file = open("json/maps.json", "r")
         json_object = json.load(file)
         file.close()
         
@@ -177,11 +175,11 @@ async def clear_maps_cmd(ctx):
         
         await asyncio.sleep(20)
         
-        file = open("maps.json", "w")
+        file = open("json/maps.json", "w")
         file.write("{}")
         file.close()
         
-        file = open("bmpage.count", "w")
+        file = open("json/bmpage.count", "w")
         file.write("0")
         file.close()
         
@@ -195,7 +193,7 @@ async def clear_maps_cmd(ctx):
 @client.command("clear_sorted_diffs")
 async def clear_sorted_diffs_cmd(ctx):
     if ctx.author.id == 718102801242259466:
-        file = open("sorteddiffs.json", "r")
+        file = open("json/sorteddiffs.json", "r")
         json_object = json.load(file)
         file.close()
         
@@ -204,7 +202,7 @@ async def clear_sorted_diffs_cmd(ctx):
         
         await asyncio.sleep(20)
         
-        file = open("sorteddiffs.json", "w")
+        file = open("json/sorteddiffs.json", "w")
         file.write("[]")
         file.close()
         
@@ -229,7 +227,7 @@ help - Shows this message.
 @client.command("recalculate_rarities")
 async def recalculate_rarities(ctx):
     if ctx.author.id == 718102801242259466:
-        file = open("maps.json", "r")
+        file = open("json/maps.json", "r")
         json_object = json.load(file)
         file.close()
         
@@ -237,7 +235,7 @@ async def recalculate_rarities(ctx):
             for y in json_object[i]["difficulties"]:
                 y["rarity"] = Calculate_Rarity(y["star_rating"])
                 
-        file = open("maps.json", "w")
+        file = open("json/maps.json", "w")
         json.dump(json_object, file)
         file.close()
                 
