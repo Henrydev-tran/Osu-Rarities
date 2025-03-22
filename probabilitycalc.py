@@ -6,6 +6,7 @@ from beatmap import Beatmap_Difficulty_Normalized_Range
 import random
 import bisect
 
+# Add all difficulties to sorted file for sorting
 async def add_diffs_to_sorted_file():
     json_object = None
     
@@ -27,6 +28,7 @@ async def add_diffs_to_sorted_file():
     json.dump(maps, file)
     file.close()
     
+# Returns all diffs in the sorted diffs file
 async def load_all_diffs():
     json_object = None
     
@@ -35,7 +37,8 @@ async def load_all_diffs():
     file.close()
     
     return json_object
-    
+
+# Calculate all normalized probabilities for beatmaps
 async def calculate_normalized_probabilities():
     maps = await load_all_diffs()
     
@@ -50,7 +53,6 @@ async def calculate_normalized_probabilities():
     current_range = 0
         
     for y in maps:
-        print(y["rarity"])
         normalized_probability = (1/y["rarity"])/sum
         
         beatmap = Beatmap_Difficulty_Normalized_Range(y["star_rating"], y["parent_id"], y["id"], y["title"], y["artist"], '%.25f' % normalized_probability, current_range, y["rarity"], y["difficulty_name"])
@@ -60,7 +62,8 @@ async def calculate_normalized_probabilities():
         normalized_maps.append(beatmap)
         
     return normalized_maps
-        
+    
+# Normalize all ranges in file (uses calculate_normalized_probabilities)
 async def add_normalized_diffs_to_sorted_file():
     object = await calculate_normalized_probabilities()
     
@@ -75,17 +78,9 @@ async def add_normalized_diffs_to_sorted_file():
     
     return maps
 
-async def get_normalized_diffs():
-    json_obj = None
-    
-    file = open("json/sorteddiffs.json", "r")
-    json_obj = json.load(file)
-    file.close()
-    
-    return json_obj
-    
+# Add all calculated ranges to ranges file
 async def add_ranges_to_file():
-    norm_diffs = await get_normalized_diffs()
+    norm_diffs = await load_all_diffs()
     
     ranges = []
 
@@ -98,6 +93,7 @@ async def add_ranges_to_file():
     
     return ranges
 
+# Returns the amount of loaded beatmaps
 async def get_amount_beatmaps():
     file = open("json/sorteddiffs.json", "r")
     json_object = json.load(file)
@@ -105,6 +101,7 @@ async def get_amount_beatmaps():
     
     return len(json_object)
 
+# Returns the ranges of calculated diffs
 async def get_ranges():
     ranges = None
     
@@ -114,10 +111,9 @@ async def get_ranges():
     
     return ranges
 
+# Returns a random index
 async def get_random_index():
     random_number = '%.25f' % random.random()
-    
-    print(random_number)
     
     ranges = await get_ranges()
     
@@ -125,16 +121,10 @@ async def get_random_index():
     
     return index
 
+# Returns a random beatmap (uses get_random_index)
 async def get_random_map():
     random_index = await get_random_index()
     
-    maps = await get_normalized_diffs()
-
-    print(maps[random_index]["normalized_probability"])
-    print(maps[random_index]["rarity"])
-    print(maps[random_index]["star_rating"])
-    
-    print(random_index)
-    print(await get_amount_beatmaps())
+    maps = await load_all_diffs()
     
     return maps[random_index]

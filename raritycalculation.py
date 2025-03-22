@@ -1,3 +1,4 @@
+# Calculate the rarity of a given star rating, algorithm posted in dev-notes in development server
 def Calculate_Rarity(sr):
     rarity = 0
     newsr = str(sr)

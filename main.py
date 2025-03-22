@@ -20,18 +20,24 @@ from probabilitycalc import *
 client = commands.Bot(command_prefix='o!', intents=discord.Intents(messages=True, guilds=True, message_content=True))
 client.remove_command("help")
 
+rolling_disabled = False
+
+# Check if bot is online/working properly
 @client.command('ping')
 async def ping(ctx):
     await ctx.message.reply("hi")
 
+# Calculate the rarity of a given star rating
 @client.command("calculaterarity")
 async def calcrare(ctx, sr):
     await ctx.message.reply(f"The given star rating of {sr} has a rarity of 1 in {round(Calculate_Rarity(sr))}")
-    
+
+# Load the beatmapset of a given ID and outputs it
 @client.command("load_beatmapset")
 async def loadbms(ctx, bms):
     await ctx.message.reply(await load_beatmapset(bms))
-    
+
+# Load a beatmapset of a given ID and saves it into database (dev only)
 @client.command("loadbms_intodatabase")
 async def loadbmsintodatabase(ctx, msid):
     if ctx.author.id == 718102801242259466:
@@ -65,7 +71,7 @@ async def loadbmsintodatabase(ctx, msid):
     
     await ctx.message.reply("You do not have the permission to use this command.")  
     
-
+# Basically the function above without the discord context
 async def loadbms(msid):
     bms = None
     
@@ -90,6 +96,7 @@ async def loadbms(msid):
     
     return 0
 
+# Load the next page of beatmapsets (dev only)
 @client.command("load_next")
 async def loadnext_page(ctx):
     if ctx.author.id == 718102801242259466:
@@ -101,6 +108,7 @@ async def loadnext_page(ctx):
     
     await ctx.message.reply("You do not have the permission to use this command.")  
     
+# Load the next given amount of pages (dev only)
 @client.command("load_multipages")
 async def loadmanypages(ctx, num):
     if ctx.author.id == 718102801242259466:
@@ -116,6 +124,7 @@ async def loadmanypages(ctx, num):
     
     await ctx.message.reply("You do not have the permission to use this command.")  
     
+# Check the amount of maps loaded in the database
 @client.command("mapsloaded")
 async def loadedamount(ctx):
     file = open("json/maps.json", "r")
@@ -124,6 +133,24 @@ async def loadedamount(ctx):
     
     await ctx.message.reply(f"This bot has loaded {len(json_object)} maps into its database.")
     
+# Turn rolling on/off for all users (dev only)
+@client.command("toggle_rolling")
+async def disable_rolling(ctx):
+    global rolling_disabled
+    
+    if ctx.author.id == 718102801242259466:
+        if rolling_disabled:
+            rolling_disabled = False
+            await ctx.message.reply("Rolling Enabled.")
+        if not rolling_disabled:
+            rolling_disabled = True
+            await ctx.message.reply("Rolling disabled.")
+            
+        return
+    
+    await ctx.message.reply("You do not have the permission to use this command.") 
+        
+# Add all difficulties to sorted file for sorting (dev only)
 @client.command("load_diffs_sorted")
 async def load_nmz_diffs(ctx):
     if ctx.author.id == 718102801242259466:
@@ -135,6 +162,7 @@ async def load_nmz_diffs(ctx):
     
     await ctx.message.reply("You do not have the permission to use this command.")  
     
+# Calculate the ranges of rarities for sorted beatmaps (dev only)
 @client.command("calculate_ranges")
 async def load_nmz_diffs(ctx):
     if ctx.author.id == 718102801242259466:
@@ -145,7 +173,8 @@ async def load_nmz_diffs(ctx):
         return  
     
     await ctx.message.reply("You do not have the permission to use this command.") 
-    
+
+# Normalize all ranges in file (dev only)
 @client.command("load_normalized_diffs")
 async def load_nmz_diffs(ctx):
     if ctx.author.id == 718102801242259466:
@@ -157,12 +186,19 @@ async def load_nmz_diffs(ctx):
     
     await ctx.message.reply("You do not have the permission to use this command.")
     
+# Roll a beatmap
 @client.command("roll")
 async def roll_random(ctx):
-    result = await get_random_map()
-    
-    await ctx.message.reply(f"Rolled {result["title"]}[{result["difficulty_name"]}] with Star Rating of {result["star_rating"]} and Rarity of 1 in {result["rarity"]}")
+    if not rolling_disabled:
+        result = await get_random_map()
+        
+        await ctx.message.reply(f"Rolled {result["title"]}[{result["difficulty_name"]}] with Star Rating of {result["star_rating"]} and Rarity of 1 in {result["rarity"]}")
+        
+        return
+        
+    await ctx.message.reply("Rolling had been temporarily disabled by the developer.")
 
+# Clear ALL maps in the database (dev only, risky)
 @client.command("clear_all_maps")
 async def clear_maps_cmd(ctx):
     if ctx.author.id == 718102801242259466:
@@ -189,7 +225,7 @@ async def clear_maps_cmd(ctx):
     
     await ctx.message.reply("You do not have the permission to use this command.")
         
-
+# Clear ALL sorted maps in the database (dev only, risky)
 @client.command("clear_sorted_diffs")
 async def clear_sorted_diffs_cmd(ctx):
     if ctx.author.id == 718102801242259466:
@@ -212,6 +248,7 @@ async def clear_sorted_diffs_cmd(ctx):
     
     await ctx.message.reply("You do not have the permission to use this command.")
     
+# Check available commands
 @client.command("help")
 async def help(ctx):
     await ctx.message.reply("Check DMs.")
@@ -244,5 +281,18 @@ async def recalculate_rarities(ctx):
         return
         
     await ctx.message.reply("You do not have the permission to use this command.")
+
+# Test the embed function (temporary, to be removed soon)
+@client.command("test_embed")
+async def test_embed(ctx):
+    embed = discord.Embed(title="You rolled Parallel Universe Shifter[Quantum Field Disruption]! (1 in 126900)", description="Star Rating: 8.54 ⭐", color=0x0362fc)
+    embed.add_field(name="Field1", value="test embed", inline=False)
+    embed.add_field(name="Field2", value="Open the gates to the parallel universes.", inline=False)
+    embed.add_field(name="lmao", value="test embed", inline=False)
+    embed.set_image(url="https://assets.ppy.sh/beatmaps/2062263/covers/cover.jpg")
+    embed.set_footer(text="Time: hh:mm dd/mm/yyyy")
+    embed.set_thumbnail(url="https://b.ppy.sh/thumb/2062263l.jpg")
+    
+    await ctx.message.reply(embed=embed)
 
 client.run(os.getenv("token"))

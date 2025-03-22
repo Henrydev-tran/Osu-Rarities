@@ -1,5 +1,6 @@
 import json
 
+# Returns a Dict from a given Beatmap object
 async def Beatmap_To_Json(beatmap):
     difficulties = []
     
@@ -25,6 +26,7 @@ async def Beatmap_To_Json(beatmap):
     
     return result
 
+# Returns a Dict from a given Beatmap_Difficulty object
 async def BeatmapDiff_To_Dict(beatmap):
     result = {
         "id": beatmap.id,
@@ -38,6 +40,7 @@ async def BeatmapDiff_To_Dict(beatmap):
     
     return result
 
+# Returns a Dict from a given Beatmap_Difficulty_Normalized_Range object
 async def BeatmapDiffNormalized_To_Dict(beatmap):
     result = {
         "id": beatmap.id,
