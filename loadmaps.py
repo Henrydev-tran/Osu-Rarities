@@ -14,6 +14,8 @@ api = AsynchronousClient.from_credentials(37144, os.getenv("app_secret"), None)
 
 search_filter = BeatmapsetSearchFilter()
 
+search_filter.set_query("updated=2025")
+
 # Unused RankStatus to Integer function
 """async def Status_to_Int(status):
     if status == RankStatus.RANKED:
@@ -82,7 +84,7 @@ async def loadnpage():
     
     page += 1
     
-    bms_page = await api.search_beatmapsets(page=page)
+    bms_page = await api.search_beatmapsets(filters=search_filter, page=page)
     
     print(bms_page)
     
@@ -100,6 +102,12 @@ async def loadnpage():
     
     file = open("json/bmpage.count", "w")
     file.write(str(page))
+    file.close()
+   
+# Set the page cound back to 0 
+def reset_page_count():
+    file = open("json/bmpage.count", "w")
+    file.write("0")
     file.close()
 
 # Unfinished function, will loop through all pages of a certain year and load all beatmaps
