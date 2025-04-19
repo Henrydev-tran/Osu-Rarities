@@ -105,7 +105,7 @@ async def loadnpage():
     file.close()
    
 # Set the page cound back to 0 
-def reset_page_count():
+async def reset_page_count():
     file = open("json/bmpage.count", "w")
     file.write("0")
     file.close()

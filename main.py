@@ -132,6 +132,17 @@ async def loadedamount(ctx):
     file.close()
     
     await ctx.message.reply(f"This bot has loaded {len(json_object)} maps into its database.")
+
+# Reset the internal page count (dev only)
+@client.command("reset_page_count")
+async def reset_page_count(ctx):
+    if ctx.author.id == 718102801242259466:
+        await reset_page_count()
+        await ctx.message.reply("Done.")
+        
+        return
+    
+    await ctx.message.reply("You do not have the permission to use this command.") 
     
 # Turn rolling on/off for all users (dev only)
 @client.command("toggle_rolling")
