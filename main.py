@@ -139,9 +139,23 @@ async def rpc(ctx):
     if ctx.author.id == 718102801242259466:
         await reset_page_count()
         await ctx.message.reply("Done.")
+        print("Reseted page back to 0.")
         
         return
     
+    await ctx.message.reply("You do not have the permission to use this command.") 
+    
+# Change query of bot search
+@client.command("change_year")
+async def bot_change_year(ctx, year):
+    if ctx.author.id == 718102801242259466:
+        await change_year(year)
+        await set_query_year(await get_year())
+        await ctx.message.reply(f"Done, changed the query date to {str(year)}")
+        print(f"Done, changed the query date to {str(year)}")
+        
+        return
+        
     await ctx.message.reply("You do not have the permission to use this command.") 
     
 # Turn rolling on/off for all users (dev only)

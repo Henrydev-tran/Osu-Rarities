@@ -12,9 +12,9 @@ load_dotenv()
 # Initialize API
 api = AsynchronousClient.from_credentials(37144, os.getenv("app_secret"), None)
 
-search_filter = BeatmapsetSearchFilter()
+query_year=2025
 
-search_filter.set_query("updated=2025")
+search_filter = BeatmapsetSearchFilter()
 
 # Unused RankStatus to Integer function
 """async def Status_to_Int(status):
@@ -32,6 +32,28 @@ search_filter.set_query("updated=2025")
         return 3
     if status == RankStatus.WIP:
         return -1"""
+        
+# Get the year from year.count file
+async def get_year():
+    file = open("json/year.count", "r")
+    y = int(file.read())
+    file.close()
+    
+    return y
+
+# Change the year from year.count file
+async def change_year(year):
+    file = open("json/year.count", "w")
+    file.write(str(year))
+    file.close()
+    
+    return year
+
+# Change search query to specific year
+async def set_query_year(year):
+    search_filter.set_query(f"updated={str(year)}")
+    
+    return year
 
 # Load a beatmapset with a given ID
 async def load_beatmapset(id):
