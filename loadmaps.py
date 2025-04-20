@@ -12,9 +12,13 @@ load_dotenv()
 # Initialize API
 api = AsynchronousClient.from_credentials(37144, os.getenv("app_secret"), None)
 
-query_year=2025
+file = open("json/year.count", "r")
+query_year = int(file.read())
+file.close()
 
 search_filter = BeatmapsetSearchFilter()
+
+search_filter.set_query(f"updated={str(query_year)}")
 
 # Unused RankStatus to Integer function
 """async def Status_to_Int(status):
@@ -110,7 +114,15 @@ async def loadnpage():
     
     print(bms_page)
     
+    if len(bms_page.beatmapsets) == 0:
+        return 0
+    
+    file = open("json/maps.json", "r")
+    json_object = json.load(file)
+    file.close()
+    
     for i in bms_page.beatmapsets:
+        
         diffs = []
     
         for y in i.beatmaps:
@@ -118,39 +130,42 @@ async def loadnpage():
             
         mapset = Beatmap(i.id, i.title, i.artist, diffs, i.creator, i.status)
         
-        await load_object_indatabase(mapset)
+        json_object[str(mapset.id)] = await Beatmap_To_Json(mapset)
         
         print(f"Mapset with ID {mapset.id} has been loaded")
+    
+    file = open("json/maps.json", "w")
+    json.dump(json_object, file)
+    file.close()
     
     file = open("json/bmpage.count", "w")
     file.write(str(page))
     file.close()
+    
+    return 1
    
-# Set the page cound back to 0 
+# Set the page count back to 0 
 async def reset_page_count():
     file = open("json/bmpage.count", "w")
     file.write("0")
     file.close()
+    
+# Set the page count
+async def set_page_count(page):
+    file = open("json/bmpage.count", "w")
+    file.write(str(page))
+    file.close()
 
 # Unfinished function, will loop through all pages of a certain year and load all beatmaps
-async def loadALL(page):
-    maps = await api.search_beatmapsets(filters=search_filter, page=page)
-    mapsets = []
-    
-    for i in maps.beatmapsets:
-        diffs = []
+async def loadALL():
+    while True:
+        result = await loadnpage()
         
-        for y in i.beatmaps:
-            diffs.append(Beatmap_Difficulty(y.difficulty_rating, i.id, y.id, i.title, i.artist, y.version))
-        
-        mapsets.append(await Beatmap_To_Json(Beatmap(i.id, i.title, i.artist, diffs, i.creator, i.status)))
-    
-    file = open("test.txt", "w")
-    json.dump(mapsets, file)
-    file.close()
-    
-    
-"""async def loadmaps():
-    
+        if result == 0:
+            print("out of beatmaps, starting next year")
+            
+            await set_page_count(0)
+            await change_year(await get_year() + 1)
+            await set_query_year(await get_year())
 
-print(asyncio.run(loadALL()))"""
+print(asyncio.run(loadALL()))

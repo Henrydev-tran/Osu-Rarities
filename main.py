@@ -145,6 +145,18 @@ async def rpc(ctx):
     
     await ctx.message.reply("You do not have the permission to use this command.") 
     
+# set the internal page count (dev only)
+@client.command("spc")
+async def spc(ctx, page):
+    if ctx.author.id == 718102801242259466:
+        await set_page_count(page)
+        await ctx.message.reply("Done.")
+        print(f"Set page to {page}.")
+        
+        return
+    
+    await ctx.message.reply("You do not have the permission to use this command.") 
+    
 # Change query of bot search
 @client.command("change_year")
 async def bot_change_year(ctx, year):
@@ -250,7 +262,7 @@ async def clear_maps_cmd(ctx):
     
     await ctx.message.reply("You do not have the permission to use this command.")
         
-# Clear ALL sorted maps in the database (dev only, risky)
+# Clear ALL sorted and ranges maps in the database (dev only, risky)
 @client.command("clear_sorted_diffs")
 async def clear_sorted_diffs_cmd(ctx):
     if ctx.author.id == 718102801242259466:
@@ -264,6 +276,10 @@ async def clear_sorted_diffs_cmd(ctx):
         await asyncio.sleep(20)
         
         file = open("json/sorteddiffs.json", "w")
+        file.write("[]")
+        file.close()
+        
+        file = open("json/ranges.json", "w")
         file.write("[]")
         file.close()
         
