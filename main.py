@@ -187,7 +187,7 @@ async def disable_rolling(ctx):
     
     await ctx.message.reply("You do not have the permission to use this command.") 
         
-# Add all difficulties to sorted file for sorting (dev only)
+# Add all difficulties to sorted file for sorting (dev only). Step 1
 @client.command("load_diffs_sorted")
 async def load_nmz_diffs(ctx):
     if ctx.author.id == 718102801242259466:
@@ -199,19 +199,7 @@ async def load_nmz_diffs(ctx):
     
     await ctx.message.reply("You do not have the permission to use this command.")  
     
-# Calculate the ranges of rarities for sorted beatmaps (dev only)
-@client.command("calculate_ranges")
-async def load_nmz_diffs(ctx):
-    if ctx.author.id == 718102801242259466:
-        await add_ranges_to_file()
-        
-        await ctx.message.reply("Done.")
-        
-        return  
-    
-    await ctx.message.reply("You do not have the permission to use this command.") 
-
-# Normalize all ranges in file (dev only)
+# Normalize all ranges in file (dev only). Step 2
 @client.command("load_normalized_diffs")
 async def load_nmz_diffs(ctx):
     if ctx.author.id == 718102801242259466:
@@ -222,6 +210,18 @@ async def load_nmz_diffs(ctx):
         return
     
     await ctx.message.reply("You do not have the permission to use this command.")
+    
+# Calculate the ranges of rarities for sorted beatmaps (dev only). Step 3
+@client.command("calculate_ranges")
+async def load_nmz_diffs(ctx):
+    if ctx.author.id == 718102801242259466:
+        await add_ranges_to_file()
+        
+        await ctx.message.reply("Done.")
+        
+        return  
+    
+    await ctx.message.reply("You do not have the permission to use this command.") 
     
 # Roll a beatmap
 @client.command("roll")
@@ -287,6 +287,17 @@ async def clear_sorted_diffs_cmd(ctx):
         
         return
     
+    await ctx.message.reply("You do not have the permission to use this command.")
+    
+# Update optimization variables in case range or maps file change (dev only)
+@client.command("update_optimization_variables")
+async def uov(ctx):
+    if ctx.author.id == 718102801242259466:
+        await update_optimization_variables()
+        await ctx.message.reply("Done.")
+        
+        return
+        
     await ctx.message.reply("You do not have the permission to use this command.")
     
 # Check available commands

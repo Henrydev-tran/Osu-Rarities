@@ -5,6 +5,11 @@ from jsontools import BeatmapDiff_To_Dict, BeatmapDiffNormalized_To_Dict
 from beatmap import Beatmap_Difficulty_Normalized_Range
 import random
 import bisect
+import asyncio
+
+# Stored maps and ranges variable for optimization (less file access)
+maps = None
+ranges = None
 
 # Add all difficulties to sorted file for sorting
 async def add_diffs_to_sorted_file():
@@ -55,7 +60,7 @@ async def calculate_normalized_probabilities():
     for y in maps:
         normalized_probability = (1/y["rarity"])/sum
         
-        beatmap = Beatmap_Difficulty_Normalized_Range(y["star_rating"], y["parent_id"], y["id"], y["title"], y["artist"], '%.25f' % normalized_probability, current_range, y["rarity"], y["difficulty_name"])
+        beatmap = Beatmap_Difficulty_Normalized_Range(y["star_rating"], y["parent_id"], y["id"], y["title"], y["artist"], '%.30f' % normalized_probability, current_range, y["rarity"], y["difficulty_name"])
         
         current_range += normalized_probability
 
@@ -85,13 +90,18 @@ async def add_ranges_to_file():
     ranges = []
 
     for i in norm_diffs:
-        ranges.append('%.25f' % i["range"])
+        ranges.append('%.30f' % i["range"])
     
     file = open("json/ranges.json", "w")
     json.dump(ranges, file)
     file.close()
     
     return ranges
+
+# Update the maps/ranges variable
+async def update_optimization_variables():
+    maps = await load_all_diffs()
+    ranges = await get_ranges()
 
 # Returns the amount of loaded beatmaps
 async def get_amount_beatmaps():
@@ -113,18 +123,25 @@ async def get_ranges():
 
 # Returns a random index
 async def get_random_index():
-    random_number = '%.25f' % random.random()
+    global ranges
     
-    ranges = await get_ranges()
+    random_number = '%.30f' % random.random()
     
-    index = bisect.bisect_left(ranges, random_number)
+    ranges_selected = ranges
+    
+    index = bisect.bisect_left(ranges_selected, random_number)
     
     return index
 
 # Returns a random beatmap (uses get_random_index)
 async def get_random_map():
+    global maps
+    
     random_index = await get_random_index()
     
-    maps = await load_all_diffs()
+    maps_obj = maps
     
-    return maps[random_index]
+    return maps_obj[random_index]
+
+maps = asyncio.run(load_all_diffs())
+ranges = asyncio.run(get_ranges())

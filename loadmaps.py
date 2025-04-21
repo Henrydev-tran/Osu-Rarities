@@ -12,6 +12,8 @@ load_dotenv()
 # Initialize API
 api = AsynchronousClient.from_credentials(37144, os.getenv("app_secret"), None)
 
+
+
 file = open("json/year.count", "r")
 query_year = int(file.read())
 file.close()
@@ -156,7 +158,7 @@ async def set_page_count(page):
     file.write(str(page))
     file.close()
 
-# Unfinished function, will loop through all pages of a certain year and load all beatmaps
+# Unused function, will loop through all pages of a certain year and load all beatmaps
 async def loadALL():
     while True:
         result = await loadnpage()
@@ -167,5 +169,3 @@ async def loadALL():
             await set_page_count(0)
             await change_year(await get_year() + 1)
             await set_query_year(await get_year())
-
-print(asyncio.run(loadALL()))
