@@ -1,8 +1,8 @@
 import os
 import json
 from loadmaps import Dict_to_Beatmap
-from jsontools import BeatmapDiff_To_Dict, BeatmapDiffNormalized_To_Dict
-from beatmap import Beatmap_Difficulty_Normalized_Range
+from jsontools import BeatmapDiff_To_Dict, BeatmapDiffCumulative_To_Dict
+from beatmap import Beatmap_Difficulty_Cumulative_Range
 import random
 import bisect
 import asyncio
@@ -10,6 +10,14 @@ import asyncio
 # Stored maps and ranges variable for optimization (less file access)
 maps = None
 ranges = None
+
+total_weight = 0
+
+file = open("json/total_weight.count", "r")
+total_weight = file.read()
+file.close()
+
+max_probability_scale = 1_000_000_000_000
 
 # Add all difficulties to sorted file for sorting
 async def add_diffs_to_sorted_file():
@@ -43,39 +51,51 @@ async def load_all_diffs():
     
     return json_object
 
-# Calculate all normalized probabilities for beatmaps
-async def calculate_normalized_probabilities():
+# Calculate all cumulative probabilities for beatmaps
+async def calculate_cumulative_probabilities():
+    global total_weight
+
     maps = await load_all_diffs()
     
-    sum = 0
+    total_weight = 0
     
-    normalized_maps = []
+    rarity_weights = []
+    
+    calculated_maps = []
     
     for i in maps:
-        difficulty = 1/i["rarity"]
-        sum += difficulty
+        rarity_weights.append(max_probability_scale // i["rarity"])
         
     current_range = 0
-        
-    for y in maps:
-        normalized_probability = (1/y["rarity"])/sum
-        
-        beatmap = Beatmap_Difficulty_Normalized_Range(y["star_rating"], y["parent_id"], y["id"], y["title"], y["artist"], '%.30f' % normalized_probability, current_range, y["rarity"], y["difficulty_name"])
-        
-        current_range += normalized_probability
-
-        normalized_maps.append(beatmap)
-        
-    return normalized_maps
     
-# Normalize all ranges in file (uses calculate_normalized_probabilities)
-async def add_normalized_diffs_to_sorted_file():
-    object = await calculate_normalized_probabilities()
+    num = 0
+    
+    for y in maps:
+        current_range += rarity_weights[num]
+        total_weight += rarity_weights[num]
+        
+        beatmap = Beatmap_Difficulty_Cumulative_Range(y["star_rating"], y["parent_id"], y["id"], y["title"], y["artist"], rarity_weights[num], current_range, y["rarity"], y["difficulty_name"])
+        
+        calculated_maps.append(beatmap)
+        
+        num += 1
+        
+    file = open("json/total_weight.count", "w")
+    file.write(str(total_weight))
+    file.close()
+    
+    print(total_weight)
+        
+    return calculated_maps
+        
+# Normalize all ranges in file (uses calculate_cumulative_probabilities)
+async def add_cumulative_diffs_to_sorted_file():
+    object = await calculate_cumulative_probabilities()
     
     maps = []
     
     for i in object:
-        maps.append(await BeatmapDiffNormalized_To_Dict(i))
+        maps.append(await BeatmapDiffCumulative_To_Dict(i))
             
     file = open("json/sorteddiffs.json", "w")
     json.dump(maps, file)
@@ -90,7 +110,7 @@ async def add_ranges_to_file():
     ranges = []
 
     for i in norm_diffs:
-        ranges.append('%.30f' % i["range"])
+        ranges.append(i["range"])
     
     file = open("json/ranges.json", "w")
     json.dump(ranges, file)
@@ -100,8 +120,17 @@ async def add_ranges_to_file():
 
 # Update the maps/ranges variable
 async def update_optimization_variables():
+    global maps
+    global ranges
+    global total_weight
+    
     maps = await load_all_diffs()
     ranges = await get_ranges()
+    
+    file = open("json/total_weight.count", "r")
+    total_weight = file.read()
+    file.close()
+
 
 # Returns the amount of loaded beatmaps
 async def get_amount_beatmaps():
@@ -125,11 +154,11 @@ async def get_ranges():
 async def get_random_index():
     global ranges
     
-    random_number = '%.30f' % random.random()
+    print(ranges)
     
-    ranges_selected = ranges
+    random_number = random.randint(1, total_weight)
     
-    index = bisect.bisect_left(ranges_selected, random_number)
+    index = bisect.bisect_left(ranges, random_number)
     
     return index
 
@@ -142,6 +171,7 @@ async def get_random_map():
     maps_obj = maps
     
     return maps_obj[random_index]
+
 
 maps = asyncio.run(load_all_diffs())
 ranges = asyncio.run(get_ranges())

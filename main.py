@@ -199,11 +199,11 @@ async def load_nmz_diffs(ctx):
     
     await ctx.message.reply("You do not have the permission to use this command.")  
     
-# Normalize all ranges in file (dev only). Step 2
-@client.command("load_normalized_diffs")
+# Acumulate all ranges in file (dev only). Step 2
+@client.command("load_cumulative_diffs")
 async def load_nmz_diffs(ctx):
     if ctx.author.id == 718102801242259466:
-        await add_normalized_diffs_to_sorted_file()
+        await add_cumulative_diffs_to_sorted_file()
         
         await ctx.message.reply("Done.")
         

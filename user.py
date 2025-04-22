@@ -1,12 +1,12 @@
 class User:
-    def __init__(self, id):
+    def __init__(self, id, maps=[], mappers=[], items=[], pp=0, rolls_amount=0, rank=0):
         self.id = id
-        self.maps = []
-        self.mappers = []
-        self.items = []
-        self.pp = []
-        self.rolls_amount = 0
-        self.rank = 0
+        self.maps = maps
+        self.mappers = mappers
+        self.items = items
+        self.pp = pp
+        self.rolls_amount = rolls_amount
+        self.rank = rank
         
     def add_map(self, map):
         self.maps.append(map)

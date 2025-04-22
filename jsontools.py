@@ -26,6 +26,9 @@ async def Beatmap_To_Json(beatmap):
     
     return result
 
+async def User_To_Dict(user):
+    pass
+
 # Returns a Dict from a given Beatmap_Difficulty object
 async def BeatmapDiff_To_Dict(beatmap):
     result = {
@@ -40,8 +43,8 @@ async def BeatmapDiff_To_Dict(beatmap):
     
     return result
 
-# Returns a Dict from a given Beatmap_Difficulty_Normalized_Range object
-async def BeatmapDiffNormalized_To_Dict(beatmap):
+# Returns a Dict from a given Beatmap_Difficulty_Cumulative_Range object
+async def BeatmapDiffCumulative_To_Dict(beatmap):
     result = {
         "id": beatmap.id,
         "title": beatmap.title,
@@ -49,7 +52,7 @@ async def BeatmapDiffNormalized_To_Dict(beatmap):
         "parent_id": beatmap.parent_id,
         "star_rating": beatmap.sr,
         "rarity": beatmap.rarity,
-        "normalized_probability": beatmap.normalized_probability,
+        "cumulative_probability": beatmap.cumulative_probability,
         "range": beatmap.range,
         "difficulty_name": beatmap.difficulty_name
     }

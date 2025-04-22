@@ -21,15 +21,15 @@ class Beatmap_Difficulty:
         self.artist = artist
         self.difficulty_name = diff_name
 
-# Beatmap_Difficulty_Normalized_Range object, stores data of a beatmap difficulty and its range & normalized probability
-class Beatmap_Difficulty_Normalized_Range:
-    def __init__(self, sr, parent_id, id, title, artist, Nmz_p, R, rarity, diff_name) -> None:
+# Beatmap_Difficulty_Cumulative_Range object, stores data of a beatmap difficulty and its range & cumulative probability
+class Beatmap_Difficulty_Cumulative_Range:
+    def __init__(self, sr, parent_id, id, title, artist, weight, R, rarity, diff_name) -> None:
         self.id = id
         self.sr = sr
         self.rarity = rarity
         self.parent_id = parent_id
         self.title = title
         self.artist = artist
-        self.normalized_probability = Nmz_p
+        self.cumulative_probability = weight
         self.range = R
         self.difficulty_name = diff_name
