@@ -27,7 +27,17 @@ async def Beatmap_To_Json(beatmap):
     return result
 
 async def User_To_Dict(user):
-    pass
+    result = {
+        "id": user.id,
+        "maps": user.maps,
+        "mappers": user.mappers,
+        "items": user.items,
+        "pp": user.pp,
+        "rolls_amount": user.rolls_amount,
+        "rank": user.rank
+    }
+    
+    return result
 
 # Returns a Dict from a given Beatmap_Difficulty object
 async def BeatmapDiff_To_Dict(beatmap):

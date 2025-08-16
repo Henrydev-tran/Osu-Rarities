@@ -12,8 +12,6 @@ load_dotenv()
 # Initialize API
 api = AsynchronousClient.from_credentials(37144, os.getenv("app_secret"), None)
 
-
-
 file = open("json/year.count", "r")
 query_year = int(file.read())
 file.close()

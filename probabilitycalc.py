@@ -14,7 +14,7 @@ ranges = None
 total_weight = 0
 
 file = open("json/total_weight.count", "r")
-total_weight = file.read()
+total_weight = int(file.read())
 file.close()
 
 max_probability_scale = 1_000_000_000_000
@@ -83,8 +83,6 @@ async def calculate_cumulative_probabilities():
     file = open("json/total_weight.count", "w")
     file.write(str(total_weight))
     file.close()
-    
-    print(total_weight)
         
     return calculated_maps
         
@@ -153,8 +151,6 @@ async def get_ranges():
 # Returns a random index
 async def get_random_index():
     global ranges
-    
-    print(ranges)
     
     random_number = random.randint(1, total_weight)
     
