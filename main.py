@@ -8,6 +8,8 @@ import asyncio
 import discord
 from discord.ext import commands
 
+from user_handling import *
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -40,7 +42,7 @@ async def loadbms(ctx, bms):
 # Load a beatmapset of a given ID and saves it into database (dev only)
 @client.command("loadbms_intodatabase")
 async def loadbmsintodatabase(ctx, msid):
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         bms = None
         
         json_object = None
@@ -99,7 +101,7 @@ async def loadbms(msid):
 # Load the next page of beatmapsets (dev only)
 @client.command("load_next")
 async def loadnext_page(ctx):
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         await loadnpage()
         
         await ctx.message.reply("Loaded 50 new beatmaps into the database")
@@ -111,7 +113,7 @@ async def loadnext_page(ctx):
 # Load the next given amount of pages (dev only)
 @client.command("load_multipages")
 async def loadmanypages(ctx, num):
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         amount_maps = 0
         
         for i in range(int(num)):
@@ -136,7 +138,7 @@ async def loadedamount(ctx):
 # Reset the internal page count (dev only)
 @client.command("reset_page_count")
 async def rpc(ctx):
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         await reset_page_count()
         await ctx.message.reply("Done.")
         print("Reseted page back to 0.")
@@ -148,7 +150,7 @@ async def rpc(ctx):
 # set the internal page count (dev only)
 @client.command("spc")
 async def spc(ctx, page):
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         await set_page_count(page)
         await ctx.message.reply("Done.")
         print(f"Set page to {page}.")
@@ -160,7 +162,7 @@ async def spc(ctx, page):
 # Change query of bot search
 @client.command("change_year")
 async def bot_change_year(ctx, year):
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         await change_year(year)
         await set_query_year(await get_year())
         await ctx.message.reply(f"Done, changed the query date to {str(year)}")
@@ -175,7 +177,7 @@ async def bot_change_year(ctx, year):
 async def disable_rolling(ctx):
     global rolling_disabled
     
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         if rolling_disabled:
             rolling_disabled = False
             await ctx.message.reply("Rolling Enabled.")
@@ -190,7 +192,7 @@ async def disable_rolling(ctx):
 # Add all difficulties to sorted file for sorting (dev only). Step 1
 @client.command("load_diffs_sorted")
 async def load_nmz_diffs(ctx):
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         await add_diffs_to_sorted_file()
         
         await ctx.message.reply("Done.")
@@ -202,7 +204,7 @@ async def load_nmz_diffs(ctx):
 # Acumulate all ranges in file (dev only). Step 2
 @client.command("load_cumulative_diffs")
 async def load_nmz_diffs(ctx):
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         await add_cumulative_diffs_to_sorted_file()
         
         await ctx.message.reply("Done.")
@@ -214,7 +216,7 @@ async def load_nmz_diffs(ctx):
 # Calculate the ranges of rarities for sorted beatmaps (dev only). Step 3
 @client.command("calculate_ranges")
 async def load_nmz_diffs(ctx):
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         await add_ranges_to_file()
         
         await ctx.message.reply("Done.")
@@ -227,6 +229,11 @@ async def load_nmz_diffs(ctx):
 @client.command("roll")
 async def roll_random(ctx):
     if not rolling_disabled:
+        userdata = await login(ctx.author.id)
+        
+        print(userdata)
+        print(ctx.author.id)
+        
         result = await get_random_map()
         
         await ctx.message.reply(f"Rolled {result["title"]}[{result["difficulty_name"]}] with Star Rating of {result["star_rating"]} and Rarity of 1 in {result["rarity"]}")
@@ -234,11 +241,43 @@ async def roll_random(ctx):
         return
         
     await ctx.message.reply("Rolling had been temporarily disabled by the developer.")
+    
+@client.command("clear_userdata")
+async def clear_userdata_cmd(ctx):
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:    
+        await clear_userdata(ctx.author.id)
+        
+        await ctx.message.reply("Done.")
+        
+        return
+    
+    await ctx.message.reply("You do not have the permission to use this command.")
+    
+# Clear ALL userdata in the database (dev only, risky)
+@client.command("clear_all_userdata")
+async def clear_all_userdata_cmd(ctx):
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+        file = open("json/users.json", "r")
+        json_object = json.load(file)
+        file.close()
+        
+        await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} users gets cleared")
+        print(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} users gets cleared")
+        
+        await asyncio.sleep(20)
+        
+        await clear_userdata_all()
+        
+        await ctx.message.reply("All users have been cleared.")
+        
+        return
+    
+    await ctx.message.reply("You do not have the permission to use this command.")
 
 # Clear ALL maps in the database (dev only, risky)
 @client.command("clear_all_maps")
 async def clear_maps_cmd(ctx):
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         file = open("json/maps.json", "r")
         json_object = json.load(file)
         file.close()
@@ -265,7 +304,7 @@ async def clear_maps_cmd(ctx):
 # Clear ALL sorted and ranges maps in the database (dev only, risky)
 @client.command("clear_sorted_diffs")
 async def clear_sorted_diffs_cmd(ctx):
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         file = open("json/sorteddiffs.json", "r")
         json_object = json.load(file)
         file.close()
@@ -292,7 +331,7 @@ async def clear_sorted_diffs_cmd(ctx):
 # Update optimization variables in case range or maps file change (dev only)
 @client.command("update_optimization_variables")
 async def uov(ctx):
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         await update_optimization_variables()
         await ctx.message.reply("Done.")
         
@@ -315,7 +354,7 @@ help - Shows this message.
     
 @client.command("recalculate_rarities")
 async def recalculate_rarities(ctx):
-    if ctx.author.id == 718102801242259466:
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         file = open("json/maps.json", "r")
         json_object = json.load(file)
         file.close()

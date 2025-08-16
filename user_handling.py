@@ -20,15 +20,32 @@ async def login(id):
         userdata = stored_users[strid]
     except:
         new_user = User(id)
-        stored_users[strid] = User_To_Dict(new_user)
+        stored_users[strid] = await User_To_Dict(new_user)
         
-        file = open("json/users.json", "w")
-        json.dump(stored_users, file)
-        file.close()
+        await write_stored_variable()
         
         return new_user
         
     return userdata
+
+async def clear_userdata_all():
+    file = open("json/users.json", "w")
+    file.write("{}")
+    file.close()
+    
+async def write_stored_variable():
+    global stored_users
+    
+    file = open("json/users.json", "w")
+    json.dump(stored_users, file)
+    file.close()
+    
+async def clear_userdata(id):
+    global stored_users
+    
+    stored_users[str(id)] = await User_To_Dict(User(id))
+    
+    await write_stored_variable()
 
 # Update the stored_users variable
 async def update_stored_variables():
