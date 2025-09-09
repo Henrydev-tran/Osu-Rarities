@@ -238,6 +238,10 @@ async def roll_random(ctx):
         
         await ctx.message.reply(f"Rolled {result["title"]}[{result["difficulty_name"]}] with Star Rating of {result["star_rating"]} and Rarity of 1 in {result["rarity"]}")
         
+        map_result = await Dict_to_BeatmapDiff(result)
+        
+        print(map_result)
+        
         return
         
     await ctx.message.reply("Rolling had been temporarily disabled by the developer.")

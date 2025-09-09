@@ -33,3 +33,15 @@ class Beatmap_Difficulty_Cumulative_Range:
         self.cumulative_probability = weight
         self.range = R
         self.difficulty_name = diff_name
+        
+class User_BM_Object:
+    def __init__(self, id, title, artist, difficulties, mapper, status):
+        self.id = id
+        self.title = title
+        self.artist = artist
+        self.difficulties = difficulties
+        self.mapper = mapper
+        self.status = status
+        
+    def add_difficulty(self, diff):
+        self.difficulties.append(diff)

@@ -2,7 +2,7 @@ from osu import AsynchronousClient, BeatmapsetSearchFilter
 import os
 import json
 from beatmap import Beatmap, Beatmap_Difficulty
-from jsontools import Beatmap_To_Json
+from jsontools import *
 import asyncio
 
 from dotenv import load_dotenv
@@ -72,16 +72,6 @@ async def load_beatmapset(id):
     loaded_beatmap = Beatmap(beatmap.id, beatmap.title, beatmap.artist, diffs, beatmap.creator, beatmap.status)
     
     return await Beatmap_To_Json(loaded_beatmap)
-
-# Returns a Beatmap object with a given dict
-async def Dict_to_Beatmap(dict_data):
-    diffs = []
-    
-    for i in dict_data["difficulties"]:        
-        difficulty = Beatmap_Difficulty(i["star_rating"], i["parent_id"], i["id"], i["title"], i["artist"], i["difficulty_name"])
-        diffs.append(difficulty)
-        
-    return Beatmap(dict_data["id"], dict_data["title"], dict_data["artist"], diffs, dict_data["mapper"], dict_data["status"])
 
 # Load a Beatmap object into the database, returns 1 if map already loaded, 0 if map loaded success
 async def load_object_indatabase(bmsobj):
