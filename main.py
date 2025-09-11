@@ -45,17 +45,13 @@ async def loadbmsintodatabase(ctx, msid):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         bms = None
         
-        json_object = None
-        
-        async with aiofiles.open("json/maps.json", "r") as file:
-            json_object = json.load(file)
+        json_object = await return_json("json/maps.json")
         
         try:
             bms = json_object[str(msid)]
         except:
             json_object[str(msid)] = await load_beatmapset(msid)
-            async with aiofiles.open("json/maps.json", "w") as file:
-                json.dump(json_object, file)
+            await save_to_json("json/maps.json", json_object)
             
             bms = json_object[str(msid)]
             
@@ -75,10 +71,7 @@ async def loadbmsintodatabase(ctx, msid):
 async def loadbms(msid):
     bms = None
     
-    json_object = None
-    
-    async with aiofiles.open("json/maps.json", "r") as file:
-        json_object = json.load(file)
+    json_object = await return_json("json/maps.json")
     
     try:
         bms = json_object[str(msid)]
@@ -87,8 +80,7 @@ async def loadbms(msid):
             json_object[str(msid)] = await load_beatmapset(msid)
         except:
             return 1
-        async with aiofiles.open("json/maps.json", "w") as file:
-            json.dump(json_object, file)
+        await save_to_json("json/maps.json", json_object)
     else:
         return 1
     
@@ -125,10 +117,7 @@ async def loadmanypages(ctx, num):
 # Check the amount of maps loaded in the database
 @client.command("mapsloaded")
 async def loadedamount(ctx):
-    json_object = None
-    
-    async with aiofiles.open("json/maps.json", "r") as file:
-        json_object = json.load(file)
+    json_object = await return_json("json/maps.json")
     
     await ctx.message.reply(f"This bot has loaded {len(json_object)} maps into its database.")
 
@@ -350,17 +339,13 @@ help - Shows this message.
 @client.command("recalculate_rarities")
 async def recalculate_rarities(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
-        json_object = None
-        
-        async with aiofiles.open("json/maps.json", "r") as file:
-            json_object = json.load(file)
+        json_object = await return_json("json/maps.json")
         
         for i in json_object:
             for y in json_object[i]["difficulties"]:
                 y["rarity"] = Calculate_Rarity(y["star_rating"])
                 
-        async with aiofiles.open("json/maps.json", "w") as file:
-            json.dump(json_object, file)
+        await save_to_json("json/maps.json", json_object)
                 
         await ctx.message.reply("Done.")
         

@@ -1,7 +1,7 @@
 import os
 import json
 from loadmaps import Dict_to_Beatmap
-from jsontools import BeatmapDiff_To_Dict, BeatmapDiffCumulative_To_Dict
+from jsontools import *
 from beatmap import Beatmap_Difficulty_Cumulative_Range
 import random
 import bisect
@@ -22,10 +22,7 @@ max_probability_scale = 1_000_000_000_000
 
 # Add all difficulties to sorted file for sorting
 async def add_diffs_to_sorted_file():
-    json_object = None
-    
-    async with aiofiles.open("json/maps.json", "r") as file:
-        json_object = json.load(file)
+    json_object = await return_json("json/maps.json")
     
     maps = []
     
@@ -37,15 +34,11 @@ async def add_diffs_to_sorted_file():
         for i in beatmap.difficulties:
             maps.append(await BeatmapDiff_To_Dict(i))
             
-    async with aiofiles.open("json/sorteddiffs.json", "w") as file:
-        json.dump(maps, file)
+    await save_to_json("json/sorteddiffs.json", maps)
     
 # Returns all diffs in the sorted diffs file
 async def load_all_diffs():
-    json_object = None
-    
-    async with aiofiles.open("json/sorteddiffs.json", "r") as file:
-        json_object = json.load(file)
+    json_object = await return_json("json/sorteddiffs.json")
     
     return json_object
 
@@ -92,8 +85,7 @@ async def add_cumulative_diffs_to_sorted_file():
     for i in object:
         maps.append(await BeatmapDiffCumulative_To_Dict(i))
             
-    async with aiofiles.open("json/sorteddiffs.json", "w") as file:
-        json.dump(maps, file)
+    await save_to_json("json/sorteddiffs.json", maps)
     
     return maps
 
@@ -106,8 +98,7 @@ async def add_ranges_to_file():
     for i in norm_diffs:
         ranges.append(i["range"])
     
-    async with aiofiles.open("json/ranges.json", "w") as file:
-        json.dump(ranges, file)
+    await save_to_json("json/ranges.json", ranges)
     
     return ranges
 
@@ -125,19 +116,13 @@ async def update_optimization_variables():
 
 # Returns the amount of loaded beatmaps
 async def get_amount_beatmaps():
-    json_object = None
-    
-    async with aiofiles.open("json/sorteddiffs.json", "r") as file:
-        json_object = json.load(file)
+    json_object = await return_json("json/sorteddiffs.json")
     
     return len(json_object)
 
 # Returns the ranges of calculated diffs
 async def get_ranges():
-    ranges = None
-    
-    async with aiofiles.open("json/ranges.json", "r") as file:
-        ranges = json.load(file)
+    ranges = await return_json("json/ranges.json")
     
     return ranges
 

@@ -42,8 +42,7 @@ search_filter.set_query(f"updated={str(query_year)}")
 async def load_gmaps_variable():
     global maps
     
-    async with aiofiles.open("json/maps.json", "r") as file:
-        maps = json.load(file)
+    maps = await return_json("json/maps.json")
     
     return maps
 
@@ -94,16 +93,13 @@ async def load_beatmapset(id):
 # Load a Beatmap object into the database, returns 1 if map already loaded, 0 if map loaded success
 async def load_object_indatabase(bmsobj):
     bms = None
-    json_object = None
+    json_object = await return_json("json/maps.json")
     
-    async with aiofiles.open("json/maps.json", "r") as file:
-        json_object = json.load(file)
     try:
         bms = json_object[str(bmsobj.id)]
     except:
         json_object[str(bmsobj.id)] = await Beatmap_To_Json(bmsobj)
-        async with aiofiles.open("json/maps.json", "w") as file:
-            json.dump(json_object, file)
+        await save_to_json("json/maps.json", json_object)
     else:
         return 1
     
@@ -123,10 +119,7 @@ async def loadnpage():
     if len(bms_page.beatmapsets) == 0:
         return 0
     
-    json_object = None
-    
-    async with aiofiles.open("json/maps.json", "r") as file:
-        json_object = json.load(file)
+    json_object = await return_json("json/maps.json")
     
     for i in bms_page.beatmapsets:
         
@@ -141,8 +134,7 @@ async def loadnpage():
         
         print(f"Mapset with ID {mapset.id} has been loaded")
     
-    async with aiofiles.open("json/maps.json", "w") as file:
-        json.dump(json_object, file)
+    await save_to_json("json/maps.json", maps)
     
     async with aiofiles.open("json/bmpage.count", "w") as file:
         await file.write(str(page))

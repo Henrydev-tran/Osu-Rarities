@@ -1,4 +1,18 @@
 from beatmap import *
+import aiofiles
+import json
+
+# Saves an object to a json path
+async def save_to_json(path, obj):
+    async with aiofiles.open(path, "w") as file:
+        data = json.dumps(obj)   
+        await file.write(data)
+        
+# Returns an object from a json path
+async def return_json(path):
+    async with aiofiles.open(path, "r") as file:
+        contents = await file.read()
+        return json.loads(contents)
 
 # Returns a Dict from a given Beatmap object
 async def Beatmap_To_Json(beatmap):
