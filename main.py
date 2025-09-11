@@ -240,7 +240,14 @@ async def roll_random(ctx):
         
         map_result = await Dict_to_BeatmapDiff(result)
         
+        await load_gmaps_variable()
+        print(await find_beatmap(map_result.parent_id))
+        
         print(map_result)
+        
+        await userdata.add_map(map_result)
+        
+        print(userdata.maps)
         
         return
         
@@ -337,6 +344,7 @@ async def clear_sorted_diffs_cmd(ctx):
 async def uov(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         await update_optimization_variables()
+        await load_gmaps_variable()
         await ctx.message.reply("Done.")
         
         return

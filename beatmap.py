@@ -35,7 +35,7 @@ class Beatmap_Difficulty_Cumulative_Range:
         self.difficulty_name = diff_name
         
 class User_BM_Object:
-    def __init__(self, id, title, artist, difficulties, mapper, status):
+    def __init__(self, id, title, artist, mapper, status, difficulties=[]):
         self.id = id
         self.title = title
         self.artist = artist
@@ -43,5 +43,22 @@ class User_BM_Object:
         self.mapper = mapper
         self.status = status
         
-    def add_difficulty(self, diff):
+    async def add_difficulty(self, diff):
         self.difficulties.append(diff)
+        
+    async def jsonify_diffs(self):
+        diffs = []
+        
+        for i in self.difficulties:
+            diffs.append({
+                "id": i.id,
+                "star_rating": i.sr,
+                "parent_id": i.parent_id,
+                "rarity": i.rarity,
+                "title": i.title,
+                "artist": i.artist,
+                "difficulty_name": i.difficulty_name
+            })
+        
+        return diffs
+    

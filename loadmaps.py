@@ -1,7 +1,7 @@
 from osu import AsynchronousClient, BeatmapsetSearchFilter
 import os
 import json
-from beatmap import Beatmap, Beatmap_Difficulty
+from beatmap import Beatmap, Beatmap_Difficulty, User_BM_Object
 from jsontools import *
 import asyncio
 
@@ -15,6 +15,8 @@ api = AsynchronousClient.from_credentials(37144, os.getenv("app_secret"), None)
 file = open("json/year.count", "r")
 query_year = int(file.read())
 file.close()
+
+maps=None
 
 search_filter = BeatmapsetSearchFilter()
 
@@ -36,6 +38,26 @@ search_filter.set_query(f"updated={str(query_year)}")
         return 3
     if status == RankStatus.WIP:
         return -1"""
+        
+# Update the global maps variable
+async def load_gmaps_variable():
+    global maps
+    
+    file = open("json/maps.json", "r")
+    maps = json.load(file)
+    file.close()
+    
+    return maps
+
+# Returns a UBMO object from a given ID
+async def find_beatmap(id):
+    global maps
+    
+    map = maps[str(id)]
+    
+    ubmo = User_BM_Object(id, map["title"], map["title"], map["mapper"], map["artist"])
+    
+    return ubmo
         
 # Get the year from year.count file
 async def get_year():

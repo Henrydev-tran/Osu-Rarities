@@ -1,4 +1,3 @@
-import json
 from beatmap import *
 
 # Returns a Dict from a given Beatmap object
@@ -28,14 +27,43 @@ async def Beatmap_To_Json(beatmap):
     return result
 
 async def User_To_Dict(user):
+    maps = []
+    
+    for i in user.maps:
+        maps.append(await UBMO_To_Dict(i))
+    
     result = {
         "id": user.id,
-        "maps": user.maps,
+        "maps": maps,
         "mappers": user.mappers,
         "items": user.items,
         "pp": user.pp,
         "rolls_amount": user.rolls_amount,
         "rank": user.rank
+    }
+    
+    return result
+
+# Returns a UBMO object from given dict
+async def Dict_To_UBMO(data):
+    diffs = []
+    
+    for i in data["difficulties"]:
+        diffs.append(await Dict_to_BeatmapDiff(i))
+    
+    result = User_BM_Object(data["id"], data["title"], data["artist"], data["mapper"], data["status"], diffs)
+    
+    return result
+
+# Returns a Dict from a given UBMO
+async def UBMO_To_Dict(ubmo):
+    result = {
+        "id": ubmo.id,
+        "title": ubmo.title,
+        "artist": ubmo.artist,
+        "difficulties": await ubmo.jsonify_diffs(),
+        "mapper": ubmo.mapper,
+        "status": ubmo.status
     }
     
     return result

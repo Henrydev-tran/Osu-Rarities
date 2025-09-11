@@ -1,6 +1,7 @@
 import json
-from user import User
+from user import User, Dict_To_User
 from jsontools import User_To_Dict
+import copy
 
 stored_users = None
 
@@ -19,14 +20,14 @@ async def login(id):
     try:
         userdata = stored_users[strid]
     except:
-        new_user = User(id)
+        new_user = await User(id)
         stored_users[strid] = await User_To_Dict(new_user)
         
         await write_stored_variable()
         
         return new_user
         
-    return userdata
+    return await Dict_To_User(userdata)
 
 async def clear_userdata_all():
     file = open("json/users.json", "w")
@@ -54,10 +55,17 @@ async def update_stored_variables():
     file = open("json/users.json", "r")
     stored_users = json.load(file)
     file.close()
+    
+# Change the value of the stored_users variable
+async def update_stored_users(new): 
+    global stored_users
+    
+    stored_users = copy.deepcopy(new)
 
 # Update user data in database using a User object
 async def update_user(user):
     global stored_users
 
     stored_users[str(id)] = User_To_Dict(user)
+    
     
