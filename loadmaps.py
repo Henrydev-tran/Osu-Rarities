@@ -3,7 +3,7 @@ import os
 import json
 from beatmap import Beatmap, Beatmap_Difficulty, User_BM_Object
 from jsontools import *
-import asyncio
+import aiofiles
 
 from dotenv import load_dotenv
 
@@ -12,9 +12,8 @@ load_dotenv()
 # Initialize API
 api = AsynchronousClient.from_credentials(37144, os.getenv("app_secret"), None)
 
-file = open("json/year.count", "r")
-query_year = int(file.read())
-file.close()
+with open("json/year.count", "r") as file:
+    query_year = int(file.read())
 
 maps=None
 
@@ -43,9 +42,8 @@ search_filter.set_query(f"updated={str(query_year)}")
 async def load_gmaps_variable():
     global maps
     
-    file = open("json/maps.json", "r")
-    maps = json.load(file)
-    file.close()
+    async with aiofiles.open("json/maps.json", "r") as file:
+        maps = json.load(file)
     
     return maps
 
@@ -61,17 +59,15 @@ async def find_beatmap(id):
         
 # Get the year from year.count file
 async def get_year():
-    file = open("json/year.count", "r")
-    y = int(file.read())
-    file.close()
+    async with aiofiles.open("json/year.count", "r") as file:
+        y = int(await file.read())
     
     return y
 
 # Change the year from year.count file
 async def change_year(year):
-    file = open("json/year.count", "w")
-    file.write(str(year))
-    file.close()
+    async with aiofiles.open("json/year.count", "w") as file:
+        await file.write(str(year))
     
     return year
 
@@ -98,17 +94,16 @@ async def load_beatmapset(id):
 # Load a Beatmap object into the database, returns 1 if map already loaded, 0 if map loaded success
 async def load_object_indatabase(bmsobj):
     bms = None
+    json_object = None
     
-    file = open("json/maps.json", "r")
-    json_object = json.load(file)
-    file.close()
+    async with aiofiles.open("json/maps.json", "r") as file:
+        json_object = json.load(file)
     try:
         bms = json_object[str(bmsobj.id)]
     except:
         json_object[str(bmsobj.id)] = await Beatmap_To_Json(bmsobj)
-        file = open("json/maps.json", "w")
-        json.dump(json_object, file)
-        file.close()
+        async with aiofiles.open("json/maps.json", "w") as file:
+            json.dump(json_object, file)
     else:
         return 1
     
@@ -116,9 +111,8 @@ async def load_object_indatabase(bmsobj):
 
 # Load the next page of beatmapsets
 async def loadnpage():
-    file = open("json/bmpage.count", "r")
-    page = int(file.read())
-    file.close()
+    async with aiofiles.open("json/bmpage.count", "r") as file:
+        page = int(await file.read())
     
     page += 1
     
@@ -129,9 +123,10 @@ async def loadnpage():
     if len(bms_page.beatmapsets) == 0:
         return 0
     
-    file = open("json/maps.json", "r")
-    json_object = json.load(file)
-    file.close()
+    json_object = None
+    
+    async with aiofiles.open("json/maps.json", "r") as file:
+        json_object = json.load(file)
     
     for i in bms_page.beatmapsets:
         
@@ -146,27 +141,23 @@ async def loadnpage():
         
         print(f"Mapset with ID {mapset.id} has been loaded")
     
-    file = open("json/maps.json", "w")
-    json.dump(json_object, file)
-    file.close()
+    async with aiofiles.open("json/maps.json", "w") as file:
+        json.dump(json_object, file)
     
-    file = open("json/bmpage.count", "w")
-    file.write(str(page))
-    file.close()
+    async with aiofiles.open("json/bmpage.count", "w") as file:
+        await file.write(str(page))
     
     return 1
    
 # Set the page count back to 0 
 async def reset_page_count():
-    file = open("json/bmpage.count", "w")
-    file.write("0")
-    file.close()
+    async with aiofiles.open("json/bmpage.count", "w") as file:
+        await file.write("0")
     
 # Set the page count
 async def set_page_count(page):
-    file = open("json/bmpage.count", "w")
-    file.write(str(page))
-    file.close()
+    async with aiofiles.open("json/bmpage.count", "w") as file:
+        await file.write(str(page))
 
 # Unused function, will loop through all pages of a certain year and load all beatmaps
 async def loadALL():

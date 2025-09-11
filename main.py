@@ -47,17 +47,15 @@ async def loadbmsintodatabase(ctx, msid):
         
         json_object = None
         
-        file = open("json/maps.json", "r")
-        json_object = json.load(file)
-        file.close()
+        async with aiofiles.open("json/maps.json", "r") as file:
+            json_object = json.load(file)
         
         try:
             bms = json_object[str(msid)]
         except:
             json_object[str(msid)] = await load_beatmapset(msid)
-            file = open("json/maps.json", "w")
-            json.dump(json_object, file)
-            file.close()
+            async with aiofiles.open("json/maps.json", "w") as file:
+                json.dump(json_object, file)
             
             bms = json_object[str(msid)]
             
@@ -79,9 +77,8 @@ async def loadbms(msid):
     
     json_object = None
     
-    file = open("json/maps.json", "r")
-    json_object = json.load(file)
-    file.close()
+    async with aiofiles.open("json/maps.json", "r") as file:
+        json_object = json.load(file)
     
     try:
         bms = json_object[str(msid)]
@@ -90,9 +87,8 @@ async def loadbms(msid):
             json_object[str(msid)] = await load_beatmapset(msid)
         except:
             return 1
-        file = open("json/maps.json", "w")
-        json.dump(json_object, file)
-        file.close()
+        async with aiofiles.open("json/maps.json", "w") as file:
+            json.dump(json_object, file)
     else:
         return 1
     
@@ -129,9 +125,10 @@ async def loadmanypages(ctx, num):
 # Check the amount of maps loaded in the database
 @client.command("mapsloaded")
 async def loadedamount(ctx):
-    file = open("json/maps.json", "r")
-    json_object = json.load(file)
-    file.close()
+    json_object = None
+    
+    async with aiofiles.open("json/maps.json", "r") as file:
+        json_object = json.load(file)
     
     await ctx.message.reply(f"This bot has loaded {len(json_object)} maps into its database.")
 
@@ -249,6 +246,8 @@ async def roll_random(ctx):
         
         print(userdata.maps)
         
+        await update_user(userdata)
+        
         return
         
     await ctx.message.reply("Rolling had been temporarily disabled by the developer.")
@@ -268,10 +267,6 @@ async def clear_userdata_cmd(ctx):
 @client.command("clear_all_userdata")
 async def clear_all_userdata_cmd(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
-        file = open("json/users.json", "r")
-        json_object = json.load(file)
-        file.close()
-        
         await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} users gets cleared")
         print(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} users gets cleared")
         
@@ -289,22 +284,16 @@ async def clear_all_userdata_cmd(ctx):
 @client.command("clear_all_maps")
 async def clear_maps_cmd(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
-        file = open("json/maps.json", "r")
-        json_object = json.load(file)
-        file.close()
-        
         await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} maps gets cleared")
         print(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} maps gets cleared")
         
         await asyncio.sleep(20)
         
-        file = open("json/maps.json", "w")
-        file.write("{}")
-        file.close()
+        async with aiofiles.open("json/maps.json", "w") as file:
+            await file.write("{}")
         
-        file = open("json/bmpage.count", "w")
-        file.write("0")
-        file.close()
+        async with aiofiles.open("json/bmpage.count", "w") as file:
+            await file.write("0")
         
         await ctx.message.reply("All maps have been cleared.")
         
@@ -316,22 +305,16 @@ async def clear_maps_cmd(ctx):
 @client.command("clear_sorted_diffs")
 async def clear_sorted_diffs_cmd(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
-        file = open("json/sorteddiffs.json", "r")
-        json_object = json.load(file)
-        file.close()
-        
         await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} difficulties gets cleared")
         print(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} difficulties gets cleared")
         
         await asyncio.sleep(20)
         
-        file = open("json/sorteddiffs.json", "w")
-        file.write("[]")
-        file.close()
+        async with aiofiles.open("json/sorteddiffs.json", "w") as file:
+            await file.write("[]")
         
-        file = open("json/ranges.json", "w")
-        file.write("[]")
-        file.close()
+        async with aiofiles.open("json/ranges.json", "w") as file:
+            await file.write("[]")
         
         await ctx.message.reply("All difficulties have been cleared.")
         
@@ -367,17 +350,17 @@ help - Shows this message.
 @client.command("recalculate_rarities")
 async def recalculate_rarities(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
-        file = open("json/maps.json", "r")
-        json_object = json.load(file)
-        file.close()
+        json_object = None
+        
+        async with aiofiles.open("json/maps.json", "r") as file:
+            json_object = json.load(file)
         
         for i in json_object:
             for y in json_object[i]["difficulties"]:
                 y["rarity"] = Calculate_Rarity(y["star_rating"])
                 
-        file = open("json/maps.json", "w")
-        json.dump(json_object, file)
-        file.close()
+        async with aiofiles.open("json/maps.json", "w") as file:
+            json.dump(json_object, file)
                 
         await ctx.message.reply("Done.")
         

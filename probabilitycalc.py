@@ -6,6 +6,7 @@ from beatmap import Beatmap_Difficulty_Cumulative_Range
 import random
 import bisect
 import asyncio
+import aiofiles
 
 # Stored maps and ranges variable for optimization (less file access)
 maps = None
@@ -13,9 +14,9 @@ ranges = None
 
 total_weight = 0
 
-file = open("json/total_weight.count", "r")
-total_weight = int(file.read())
-file.close()
+with open("json/total_weight.count", "r") as file:
+    total_weight = int(file.read())
+
 
 max_probability_scale = 1_000_000_000_000
 
@@ -23,9 +24,8 @@ max_probability_scale = 1_000_000_000_000
 async def add_diffs_to_sorted_file():
     json_object = None
     
-    file = open("json/maps.json", "r")
-    json_object = json.load(file)
-    file.close()
+    async with aiofiles.open("json/maps.json", "r") as file:
+        json_object = json.load(file)
     
     maps = []
     
@@ -37,17 +37,15 @@ async def add_diffs_to_sorted_file():
         for i in beatmap.difficulties:
             maps.append(await BeatmapDiff_To_Dict(i))
             
-    file = open("json/sorteddiffs.json", "w")
-    json.dump(maps, file)
-    file.close()
+    async with aiofiles.open("json/sorteddiffs.json", "w") as file:
+        json.dump(maps, file)
     
 # Returns all diffs in the sorted diffs file
 async def load_all_diffs():
     json_object = None
     
-    file = open("json/sorteddiffs.json", "r")
-    json_object = json.load(file)
-    file.close()
+    async with aiofiles.open("json/sorteddiffs.json", "r") as file:
+        json_object = json.load(file)
     
     return json_object
 
@@ -80,9 +78,8 @@ async def calculate_cumulative_probabilities():
         
         num += 1
         
-    file = open("json/total_weight.count", "w")
-    file.write(str(total_weight))
-    file.close()
+    async with aiofiles.open("json/total_weight.count", "w") as file:
+        await file.write(str(total_weight))
         
     return calculated_maps
         
@@ -95,9 +92,8 @@ async def add_cumulative_diffs_to_sorted_file():
     for i in object:
         maps.append(await BeatmapDiffCumulative_To_Dict(i))
             
-    file = open("json/sorteddiffs.json", "w")
-    json.dump(maps, file)
-    file.close()
+    async with aiofiles.open("json/sorteddiffs.json", "w") as file:
+        json.dump(maps, file)
     
     return maps
 
@@ -110,9 +106,8 @@ async def add_ranges_to_file():
     for i in norm_diffs:
         ranges.append(i["range"])
     
-    file = open("json/ranges.json", "w")
-    json.dump(ranges, file)
-    file.close()
+    async with aiofiles.open("json/ranges.json", "w") as file:
+        json.dump(ranges, file)
     
     return ranges
 
@@ -125,15 +120,15 @@ async def update_optimization_variables():
     maps = await load_all_diffs()
     ranges = await get_ranges()
     
-    file = open("json/total_weight.count", "r")
-    total_weight = file.read()
-    file.close()
+    async with aiofiles.open("json/total_weight.count", "r") as file:
+        total_weight = int(await file.read())
 
 # Returns the amount of loaded beatmaps
 async def get_amount_beatmaps():
-    file = open("json/sorteddiffs.json", "r")
-    json_object = json.load(file)
-    file.close()
+    json_object = None
+    
+    async with aiofiles.open("json/sorteddiffs.json", "r") as file:
+        json_object = json.load(file)
     
     return len(json_object)
 
@@ -141,9 +136,8 @@ async def get_amount_beatmaps():
 async def get_ranges():
     ranges = None
     
-    file = open("json/ranges.json", "r")
-    ranges = json.load(file)
-    file.close()
+    async with aiofiles.open("json/ranges.json", "r") as file:
+        ranges = json.load(file)
     
     return ranges
 

@@ -1,13 +1,12 @@
-import json
+import json, aiofiles
 from user import User, Dict_To_User
 from jsontools import User_To_Dict
 import copy
 
 stored_users = None
 
-file = open("json/users.json", "r")
-stored_users = json.load(file)
-file.close()
+with open("json/users.json", "r") as file:
+    stored_users = json.load(file)
 
 # Returns a User object using a user's discord id. will create a new user in the database if not already created.
 async def login(id):
@@ -30,16 +29,14 @@ async def login(id):
     return await Dict_To_User(userdata)
 
 async def clear_userdata_all():
-    file = open("json/users.json", "w")
-    file.write("{}")
-    file.close()
+    async with aiofiles.open("json/users.json", "w") as file:
+        await file.write("{}")
     
 async def write_stored_variable():
     global stored_users
     
-    file = open("json/users.json", "w")
-    json.dump(stored_users, file)
-    file.close()
+    async with aiofiles.open("json/users.json", "w") as file:
+        json.dump(stored_users, file)
     
 async def clear_userdata(id):
     global stored_users
@@ -52,9 +49,8 @@ async def clear_userdata(id):
 async def update_stored_variables():
     global stored_users
     
-    file = open("json/users.json", "r")
-    stored_users = json.load(file)
-    file.close()
+    async with aiofiles.open("json/users.json", "r") as file:
+        stored_users = json.load(file)
     
 # Change the value of the stored_users variable
 async def update_stored_users(new): 
