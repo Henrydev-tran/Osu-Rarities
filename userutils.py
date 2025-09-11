@@ -1,4 +1,4 @@
-from loadmaps import find_beatmap
+from loadmaps import find_beatmap, return_json, save_to_json, User_To_Dict
 from jsontools import Dict_To_UBMO
 
 # User class for...users obviously why do you even need this comment
@@ -47,3 +47,26 @@ async def Dict_To_User(data):
     result = User(data["id"], maps, data["mappers"], data["items"], data["pp"], data["rolls_amount"], data["rank"])
     
     return result
+
+# UserPool object that stores all users in User object form and json form
+class UserPool:
+    def __init__(self, users={}, users_json={}):
+        self.users = users
+        self.users_json = users_json
+        
+    async def load_from(self, file):
+        self.users_json = await return_json(file)
+        
+        for i in self.users_json:
+            self.users[i] = await Dict_To_User(self.users_json[i])
+            
+    async def update_user(self, id, new):
+        self.users[str(id)] = new
+        self.users_json[str(id)] = await User_To_Dict(new)
+        
+    async def clear_all(self):
+        self.users = {}
+        self.users_json = {}
+            
+    async def save_to(self, file):
+        await save_to_json(file, self.users_json)

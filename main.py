@@ -1,7 +1,4 @@
 import os
-import random
-import copy
-import json
 
 import asyncio
 
@@ -236,15 +233,16 @@ async def roll_random(ctx):
         print(userdata.maps)
         
         await update_user(userdata)
+        await write_stored_variable()
         
         return
         
     await ctx.message.reply("Rolling had been temporarily disabled by the developer.")
     
 @client.command("clear_userdata")
-async def clear_userdata_cmd(ctx):
+async def clear_userdata_cmd(ctx, id):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:    
-        await clear_userdata(ctx.author.id)
+        await clear_userdata(id)
         
         await ctx.message.reply("Done.")
         
@@ -256,6 +254,8 @@ async def clear_userdata_cmd(ctx):
 @client.command("clear_all_userdata")
 async def clear_all_userdata_cmd(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+        json_object = await return_json("json/users.json")
+        
         await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} users gets cleared")
         print(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} users gets cleared")
         
@@ -273,6 +273,8 @@ async def clear_all_userdata_cmd(ctx):
 @client.command("clear_all_maps")
 async def clear_maps_cmd(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+        json_object = await return_json("json/maps.json")
+        
         await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} maps gets cleared")
         print(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} maps gets cleared")
         
@@ -294,6 +296,8 @@ async def clear_maps_cmd(ctx):
 @client.command("clear_sorted_diffs")
 async def clear_sorted_diffs_cmd(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+        json_object = await return_json("json/sorteddiffs.json")
+        
         await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} difficulties gets cleared")
         print(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} difficulties gets cleared")
         

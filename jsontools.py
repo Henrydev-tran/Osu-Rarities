@@ -13,6 +13,25 @@ async def return_json(path):
     async with aiofiles.open(path, "r") as file:
         contents = await file.read()
         return json.loads(contents)
+    
+# MapPool object that stores all the maps in json and Beatmap form
+class MapPool:
+    def __init__(self, maps={}, maps_json={}):
+        self.maps = maps
+        self.maps_json = maps_json
+        
+    async def load_from(self, file):
+        self.maps_json = await return_json(file)
+        
+        for i in self.maps_json:
+            self.maps[i] = await Dict_to_Beatmap(self.maps_json[i])
+            
+    async def clear_all(self):
+        self.maps = {}
+        self.maps_json = {}
+            
+    async def save_to(self, file):
+        await save_to_json(file, self.maps_json)
 
 # Returns a Dict from a given Beatmap object
 async def Beatmap_To_Json(beatmap):

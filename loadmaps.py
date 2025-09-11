@@ -1,6 +1,5 @@
 from osu import AsynchronousClient, BeatmapsetSearchFilter
 import os
-import json
 from beatmap import Beatmap, Beatmap_Difficulty, User_BM_Object
 from jsontools import *
 import aiofiles
@@ -15,7 +14,7 @@ api = AsynchronousClient.from_credentials(37144, os.getenv("app_secret"), None)
 with open("json/year.count", "r") as file:
     query_year = int(file.read())
 
-maps=None
+maps = MapPool()
 
 search_filter = BeatmapsetSearchFilter()
 
@@ -42,17 +41,17 @@ search_filter.set_query(f"updated={str(query_year)}")
 async def load_gmaps_variable():
     global maps
     
-    maps = await return_json("json/maps.json")
+    await maps.load_from("json/maps.json")
     
-    return maps
+    return maps.maps
 
 # Returns a UBMO object from a given ID
 async def find_beatmap(id):
     global maps
     
-    map = maps[str(id)]
+    map = maps.maps[str(id)]
     
-    ubmo = User_BM_Object(id, map["title"], map["title"], map["mapper"], map["artist"])
+    ubmo = User_BM_Object(id, map.title, map.artist, map.mapper, map.status)
     
     return ubmo
         

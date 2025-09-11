@@ -1,5 +1,3 @@
-import os
-import json
 from loadmaps import Dict_to_Beatmap
 from jsontools import *
 from beatmap import Beatmap_Difficulty_Cumulative_Range
@@ -17,14 +15,13 @@ total_weight = 0
 with open("json/total_weight.count", "r") as file:
     total_weight = int(file.read())
 
-
 max_probability_scale = 1_000_000_000_000
 
 # Add all difficulties to sorted file for sorting
 async def add_diffs_to_sorted_file():
     json_object = await return_json("json/maps.json")
     
-    maps = []
+    sorted_maps = []
     
     for key in json_object:       
         loaded_json = json_object[key]
@@ -32,9 +29,9 @@ async def add_diffs_to_sorted_file():
         beatmap = Dict_to_Beatmap(loaded_json)
         
         for i in beatmap.difficulties:
-            maps.append(await BeatmapDiff_To_Dict(i))
+            sorted_maps.append(await BeatmapDiff_To_Dict(i))
             
-    await save_to_json("json/sorteddiffs.json", maps)
+    await save_to_json("json/sorteddiffs.json", sorted_maps)
     
 # Returns all diffs in the sorted diffs file
 async def load_all_diffs():
@@ -46,7 +43,7 @@ async def load_all_diffs():
 async def calculate_cumulative_probabilities():
     global total_weight
 
-    maps = await load_all_diffs()
+    sorted_maps = await load_all_diffs()
     
     total_weight = 0
     
@@ -61,7 +58,7 @@ async def calculate_cumulative_probabilities():
     
     num = 0
     
-    for y in maps:
+    for y in sorted_maps:
         current_range += rarity_weights[num]
         total_weight += rarity_weights[num]
         
@@ -80,27 +77,27 @@ async def calculate_cumulative_probabilities():
 async def add_cumulative_diffs_to_sorted_file():
     object = await calculate_cumulative_probabilities()
     
-    maps = []
+    sorted_maps = []
     
     for i in object:
-        maps.append(await BeatmapDiffCumulative_To_Dict(i))
+        sorted_maps.append(await BeatmapDiffCumulative_To_Dict(i))
             
-    await save_to_json("json/sorteddiffs.json", maps)
+    await save_to_json("json/sorteddiffs.json", sorted_maps)
     
-    return maps
+    return sorted_maps
 
 # Add all calculated ranges to ranges file
 async def add_ranges_to_file():
     norm_diffs = await load_all_diffs()
     
-    ranges = []
+    sorted_ranges = []
 
     for i in norm_diffs:
-        ranges.append(i["range"])
+        sorted_ranges.append(i["range"])
     
-    await save_to_json("json/ranges.json", ranges)
+    await save_to_json("json/ranges.json", sorted_ranges)
     
-    return ranges
+    return sorted_ranges
 
 # Update the maps/ranges variable
 async def update_optimization_variables():

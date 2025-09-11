@@ -61,4 +61,3 @@ class User_BM_Object:
             })
         
         return diffs
-    
