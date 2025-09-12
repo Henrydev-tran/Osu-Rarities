@@ -1,3 +1,5 @@
+import math
+
 # Calculate the rarity of a given star rating, algorithm posted in dev-notes in development server
 def Calculate_Rarity(sr):
     rarity = 0
@@ -52,3 +54,31 @@ def Calculate_Rarity(sr):
 
     return round(rarity)
 
+# Star colors of beatmaps for embeds
+star_colors = [
+    0x00FFD1,  
+    0x00FF66,  
+    0xAFFF00,  
+    0xFFD000,  
+    0xFF9500,  
+    0xFF3333,  
+    0xFF0066,  
+    0xD633FF,  
+    0x9933FF,  
+    0x6633FF, 
+    0x4D1FFF,  
+    0x3B1A91,  
+    0x2A135F,  
+    0x150A30,  
+    0x000000,  
+]
+
+# Returns a star color with a star rating
+async def get_star_color(value):
+    if value >= 15:
+        return "#000000"
+    if value < 1:
+        return star_colors[0]
+    
+    index = math.ceil(value) - 1
+    return star_colors[index]

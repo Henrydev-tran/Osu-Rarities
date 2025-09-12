@@ -11,10 +11,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from raritycalculation import Calculate_Rarity
+from raritycalculation import Calculate_Rarity, get_star_color
 from jsontools import Beatmap_To_Json
 from loadmaps import *
 from probabilitycalc import *
+
+import datetime
 
 client = commands.Bot(command_prefix='o!', intents=discord.Intents(messages=True, guilds=True, message_content=True))
 client.remove_command("help")
@@ -219,7 +221,11 @@ async def roll_random(ctx):
         
         result = await get_random_map()
         
-        await ctx.message.reply(f"Rolled {result["title"]}[{result["difficulty_name"]}] with Star Rating of {result["star_rating"]} and Rarity of 1 in {result["rarity"]}")
+        embed = discord.Embed(title=f"You rolled {result["title"]}[{result["difficulty_name"]}]! (1 in {result["rarity"]})", description=f"Star Rating: {result["star_rating"]} ⭐", color=await get_star_color(result["star_rating"]), timestamp=datetime.datetime.now())
+        embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{result["id"]}/covers/cover.jpg")
+        embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{result["id"]}l.jpg")
+        
+        await ctx.message.reply(embed=embed)
         
         map_result = await Dict_to_BeatmapDiff(result)
         
