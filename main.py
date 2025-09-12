@@ -56,13 +56,23 @@ def get_star_emoji(star_rating: float) -> str:
 def chunk_list(lst, size):
     return [lst[i:i + size] for i in range(0, len(lst), size)]
 
-# Class displays maps in a paging system
+# Class displays maps in a paging system and sorting
 class MapPaginator(discord.ui.View):
-    def __init__(self, maps, username, per_page=10):
+    def __init__(self, maps, username, per_page=6):
         super().__init__(timeout=120)
-        self.pages = chunk_list(maps, per_page)
+        self.original_maps = maps  # keep a reference to the unsorted maps
+        self.maps = maps[:]        # working copy (can be sorted)
+        self.pages = chunk_list(self.maps, per_page)
         self.index = 0
         self.username = username
+
+        # add dropdown menu into the view
+        self.add_item(self.SortDropdown(self))
+
+    def update_pages(self):
+        """Re-split maps into pages after sorting"""
+        self.pages = chunk_list(self.maps, len(self.pages[0]))
+        self.index = 0  # reset to first page
 
     def make_embed(self):
         embed = discord.Embed(
@@ -98,6 +108,28 @@ class MapPaginator(discord.ui.View):
             self.index += 1
             await interaction.response.edit_message(embed=self.make_embed(), view=self)
 
+    class SortDropdown(discord.ui.Select):
+        def __init__(self, paginator):
+            self.paginator = paginator
+            options = [
+                discord.SelectOption(label="Default order", value="default"),
+                discord.SelectOption(label="Rarity ↑ (low → high)", value="asc"),
+                discord.SelectOption(label="Rarity ↓ (high → low)", value="desc"),
+            ]
+            super().__init__(placeholder="Sort maps by...", min_values=1, max_values=1, options=options)
+
+        async def callback(self, interaction: discord.Interaction):
+            if self.values[0] == "asc":
+                self.paginator.maps = sorted(self.paginator.original_maps, key=lambda m: min(d['rarity'] for d in m['difficulties']))
+            elif self.values[0] == "desc":
+                self.paginator.maps = sorted(self.paginator.original_maps, key=lambda m: max(d['rarity'] for d in m['difficulties']), reverse=True)
+            else:
+                self.paginator.maps = self.paginator.original_maps[:]  # reset
+
+            self.paginator.update_pages()
+            await interaction.response.edit_message(embed=self.paginator.make_embed(), view=self.paginator)
+
+
             
 ###########################################################
 
@@ -106,16 +138,22 @@ rolling_disabled = False
 # Check if bot is online/working properly
 @client.command('ping')
 async def ping(ctx):
+    await login(ctx.author.id)
+    
     await ctx.message.reply("hi")
 
 # Calculate the rarity of a given star rating
 @client.command("calculaterarity")
 async def calcrare(ctx, sr):
+    await login(ctx.author.id)
+    
     await ctx.message.reply(f"The given star rating of {sr} has a rarity of 1 in {round(Calculate_Rarity(sr))}")
 
 # Load the beatmapset of a given ID and outputs it
 @client.command("load_beatmapset")
 async def loadbms(ctx, bms):
+    await login(ctx.author.id)
+    
     await ctx.message.reply(await load_beatmapset(bms))
 
 # Load a beatmapset of a given ID and saves it into database (dev only)
@@ -196,6 +234,8 @@ async def loadmanypages(ctx, num):
 # Check the amount of maps loaded in the database
 @client.command("mapsloaded")
 async def loadedamount(ctx):
+    await login(ctx.author.id)
+    
     json_object = await return_json("json/maps.json")
     
     await ctx.message.reply(f"This bot has loaded {len(json_object)} maps into its database.")
@@ -414,6 +454,8 @@ async def uov(ctx):
 # Check available commands
 @client.command("help")
 async def help(ctx):
+    await login(ctx.author.id)
+    
     await ctx.message.reply("Check DMs.")
     
     await ctx.author.send("""Prefix - o!
@@ -472,10 +514,15 @@ async def lookup(ctx, beatmapid):
         inline=False
     )
     
+    embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{map.id}/covers/cover.jpg")
+    embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{map.id}l.jpg")
+    
     await ctx.message.reply(embed=embed)
     
 @client.command("inventory")
 async def inventory(ctx, id = None):
+    await login(ctx.author.id)
+    
     userdata = None
     username = None
     
@@ -516,6 +563,8 @@ async def recalculate_rarities(ctx):
 # Test the embed function (temporary, to be removed soon)
 @client.command("test_embed")
 async def test_embed(ctx):
+    await login(ctx.author.id)
+    
     embed = discord.Embed(title="You rolled Parallel Universe Shifter[Quantum Field Disruption]! (1 in 126900)", description="Star Rating: 8.54 ⭐", color=0x0362fc)
     embed.add_field(name="Field1", value="test embed", inline=False)
     embed.add_field(name="Field2", value="Open the gates to the parallel universes.", inline=False)
