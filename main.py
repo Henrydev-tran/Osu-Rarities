@@ -216,30 +216,27 @@ async def roll_random(ctx):
     if not rolling_disabled:
         userdata = await login(ctx.author.id)
         
-        print(userdata)
-        print(ctx.author.id)
-        
         result = await get_random_map()
         
         embed = discord.Embed(title=f"You rolled {result["title"]}[{result["difficulty_name"]}]! (1 in {result["rarity"]})", description=f"Star Rating: {result["star_rating"]} ⭐", color=await get_star_color(result["star_rating"]), timestamp=datetime.datetime.now())
         embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{result["id"]}/covers/cover.jpg")
         embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{result["id"]}l.jpg")
         
-        await ctx.message.reply(embed=embed)
-        
         map_result = await Dict_to_BeatmapDiff(result)
         
-        await load_gmaps_variable()
-        print(await find_beatmap(map_result.parent_id))
+        parent = await find_beatmap(map_result.parent_id)
         
-        print(map_result)
+        embed.add_field(name="Artist", value=parent.artist)
+        embed.add_field(name="Mapper", value=parent.mapper)
+        embed.add_field(name="BeatmapsetID", value=parent.id)
+        embed.add_field(name="BeatmapID", value=result["id"])
+        embed.add_field(name="Status", value=await get_status(parent.status))
         
         await userdata.add_map(map_result)
         
-        print(userdata.maps)
-        
         await update_user(userdata)
-        await write_stored_variable()
+        
+        await ctx.message.reply(embed=embed)
         
         return
         
@@ -322,11 +319,12 @@ async def clear_sorted_diffs_cmd(ctx):
     await ctx.message.reply("You do not have the permission to use this command.")
     
 # Update optimization variables in case range or maps file change (dev only)
-@client.command("update_optimization_variables")
+@client.command("uov")
 async def uov(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         await update_optimization_variables()
         await load_gmaps_variable()
+        await write_stored_variable()
         await ctx.message.reply("Done.")
         
         return

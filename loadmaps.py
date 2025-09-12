@@ -37,6 +37,14 @@ search_filter.set_query(f"updated={str(query_year)}")
     if status == RankStatus.WIP:
         return -1"""
         
+async def get_status(status_code):
+    if status_code == 1:
+        return "Ranked"
+    if status_code == 4:
+        return "Loved"
+    
+    return "Unknown"
+        
 # Update the global maps variable
 async def load_gmaps_variable():
     global maps
@@ -51,7 +59,7 @@ async def find_beatmap(id):
     
     map = maps.maps[str(id)]
     
-    ubmo = User_BM_Object(id, map.title, map.artist, map.mapper, map.status)
+    ubmo = User_BM_Object(id, map.title, map.artist, map.mapper, map.status, [])
     
     return ubmo
         
