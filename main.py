@@ -15,11 +15,91 @@ from raritycalculation import Calculate_Rarity, get_star_color
 from jsontools import Beatmap_To_Json
 from loadmaps import *
 from probabilitycalc import *
+from math import ceil
 
 import datetime
 
 client = commands.Bot(command_prefix='o!', intents=discord.Intents(messages=True, guilds=True, message_content=True))
 client.remove_command("help")
+
+
+
+########################## UTILS ##########################
+
+# Maps the star rating into color emojis
+emoji_map = {
+    1: "<:1_:1415986345670606949>",
+    2: "<:2_:1415986479062057020>",
+    3: "<:3_:1415986584498606130>",
+    4: "<:4_:1415986680267014144>",
+    5: "<:5_:1415986831907885147>",
+    6: "<:6_:1415986916394012806>",
+    7: "<:7_:1415987059868434462>", 
+    8: "<:8_:1415987148124979240>", 
+    9: "<:9_:1415987239909064816>", 
+    10: "<:10:1415987332552720426>", 
+    11: "<:11:1415987398994558996>", 
+    12: "<:12:1415987514371473488>", 
+    13: "<:13:1415987587029667931>", 
+    14: "<:14:1415987664330424320>", 
+    15: "<:15:1415987720001552416>"
+}
+
+# Returns an emoji id from a given star rating
+def get_star_emoji(star_rating: float) -> str:
+    star = round(star_rating)
+    if star < 1: star = 1
+    if star > 15: star = 15
+    return emoji_map.get(star, "<:15:345678901234567890>")
+
+# Split a list into chunks of given size
+def chunk_list(lst, size):
+    return [lst[i:i + size] for i in range(0, len(lst), size)]
+
+# Class displays maps in a paging system
+class MapPaginator(discord.ui.View):
+    def __init__(self, maps, username, per_page=10):
+        super().__init__(timeout=120)
+        self.pages = chunk_list(maps, per_page)
+        self.index = 0
+        self.username = username
+
+    def make_embed(self):
+        embed = discord.Embed(
+            title=f"{self.username}'s Maps",
+            color=discord.Color.blurple()
+        )
+
+        for m in self.pages[self.index]:
+            difficulties = "\n".join(
+                f"{get_star_emoji(d['star_rating'])} "
+                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity {d['rarity']})"
+                for d in m["difficulties"]
+            )
+
+            embed.add_field(
+                name=f"{m['title']} — {m['artist']} (by {m['mapper']})",
+                value=difficulties,
+                inline=False
+            )
+
+        embed.set_footer(text=f"Page {self.index+1}/{len(self.pages)}")
+        return embed
+
+    @discord.ui.button(label="◀️", style=discord.ButtonStyle.secondary)
+    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index > 0:
+            self.index -= 1
+            await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    @discord.ui.button(label="▶️", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index < len(self.pages) - 1:
+            self.index += 1
+            await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+            
+###########################################################
 
 rolling_disabled = False
 
@@ -343,6 +423,28 @@ load_beatmapset - Returns json data of a beatmapset with a given bms id. Argumen
 mapsloaded - Check how many maps has been loaded into the database. example: o!mapsloaded.
 help - Shows this message.
 7 more dev-only commands.""")
+    
+@client.command("inventory")
+async def inventory(ctx, id = None):
+    userdata = None
+    username = None
+    
+    if id == None:
+        userdata = await login(ctx.author.id)
+        username = ctx.author.display_name
+    else:
+        userdata = await login(id)
+        user = await client.fetch_user(id)
+        username = user.name
+        
+    
+    user_json = await User_To_Dict(userdata)
+    
+    maps = user_json["maps"]
+    
+    view = MapPaginator(maps, username, per_page=10)
+    await ctx.send(embed=view.make_embed(), view=view)
+    
     
 @client.command("recalculate_rarities")
 async def recalculate_rarities(ctx):
