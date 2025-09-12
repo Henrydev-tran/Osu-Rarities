@@ -73,12 +73,12 @@ class MapPaginator(discord.ui.View):
         for m in self.pages[self.index]:
             difficulties = "\n".join(
                 f"{get_star_emoji(d['star_rating'])} "
-                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity {d['rarity']})"
+                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity 1 in {d['rarity']}) -- ID: {d['id']}"
                 for d in m["difficulties"]
             )
 
             embed.add_field(
-                name=f"{m['title']} — {m['artist']} (by {m['mapper']})",
+                name=f"{m['title']} — {m['artist']} (by {m['mapper']}) -- ID: {m['id']}",
                 value=difficulties,
                 inline=False
             )
@@ -304,7 +304,7 @@ async def roll_random(ctx):
         
         map_result = await Dict_to_BeatmapDiff(result)
         
-        parent = await find_beatmap(map_result.parent_id)
+        parent = await find_ubmo(map_result.parent_id)
         
         embed.add_field(name="Artist", value=parent.artist)
         embed.add_field(name="Mapper", value=parent.mapper)
@@ -423,6 +423,56 @@ load_beatmapset - Returns json data of a beatmapset with a given bms id. Argumen
 mapsloaded - Check how many maps has been loaded into the database. example: o!mapsloaded.
 help - Shows this message.
 7 more dev-only commands.""")
+    
+@client.command("lookup")
+async def lookup(ctx, beatmapid):
+    userdata = await login(ctx.author.id)
+    
+    map = await find_beatmap(beatmapid)
+    
+    embed = discord.Embed(title=f"{map.title} - ID: {beatmapid}", color=discord.Color.blurple())
+    embed.add_field(name="Artist", value=map.artist)
+    embed.add_field(name="Mapper", value=map.mapper)
+    embed.add_field(name="Status", value=await get_status(map.status))
+    
+    owned = []
+    owned_var1 = False
+    
+    ids = [beatmap.id for beatmap in userdata.maps]
+    
+    if int(beatmapid) in ids:       
+        for i in map.difficulties:
+            owned_var2 = False
+            
+            for y in userdata.maps[ids.index(int(beatmapid))].difficulties:
+                if i.id == y.id:
+                    owned.append(1)
+                    owned_var2 = True
+            
+            if owned_var2:
+                continue
+                    
+            owned.append(0)    
+        
+        owned_var1 = True
+        
+    if not owned_var1:
+        for i in map.difficulties:
+            owned.append(0)
+    
+    difficulties = "\n".join(
+        f"{get_star_emoji(d.sr)} "
+        f"- {d.difficulty_name} ⭐ {d.sr} (rarity 1 in {d.rarity}) -- ID: {d.id} -- Owned: {owned[map.difficulties.index(d)]}"
+        for d in map.difficulties
+    )
+
+    embed.add_field(
+        name=f"Difficulties",
+        value=difficulties,
+        inline=False
+    )
+    
+    await ctx.message.reply(embed=embed)
     
 @client.command("inventory")
 async def inventory(ctx, id = None):

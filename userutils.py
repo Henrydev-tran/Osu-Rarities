@@ -1,4 +1,4 @@
-from loadmaps import find_beatmap, return_json, save_to_json, User_To_Dict, BeatmapDiff_To_Dict
+from loadmaps import find_ubmo, return_json, save_to_json, User_To_Dict, BeatmapDiff_To_Dict
 from jsontools import Dict_To_UBMO, UBMO_To_Dict
 
 # User class for...users obviously why do you even need this comment
@@ -19,7 +19,7 @@ class User:
                 
                 return
           
-        ubmo = await find_beatmap(map.parent_id)
+        ubmo = await find_ubmo(map.parent_id)
         
         await ubmo.add_difficulty(map)
         

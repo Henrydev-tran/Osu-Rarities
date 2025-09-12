@@ -54,7 +54,7 @@ async def load_gmaps_variable():
     return maps.maps
 
 # Returns a UBMO object from a given ID
-async def find_beatmap(id):
+async def find_ubmo(id):
     global maps
     
     map = maps.maps[str(id)]
@@ -62,6 +62,14 @@ async def find_beatmap(id):
     ubmo = User_BM_Object(id, map.title, map.artist, map.mapper, map.status, [])
     
     return ubmo
+
+# Returns a Beatmap object from a given ID
+async def find_beatmap(id):
+    global maps
+    
+    map = maps.maps[str(id)]
+    
+    return map
         
 # Get the year from year.count file
 async def get_year():
