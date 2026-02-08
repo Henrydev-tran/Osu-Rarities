@@ -3,7 +3,7 @@ from jsontools import Dict_To_UBMO, UBMO_To_Dict
 
 # User class for...users obviously why do you even need this comment
 class User:
-    def __init__(self, id, maps=[], mappers=[], items=[], pp=0, rolls_amount=0, rank=0):
+    def __init__(self, id, maps=[], mappers=[], items=[], pp=0, rolls_amount=25, rank=0, roll_max=25):
         self.id = id
         self.maps = maps
         self.mappers = mappers
@@ -11,6 +11,7 @@ class User:
         self.pp = pp
         self.rolls_amount = rolls_amount
         self.rank = rank
+        self.roll_max = roll_max
     
     async def add_map(self, map):
         for i in self.maps:
@@ -47,7 +48,7 @@ async def Dict_To_User(data):
     for i in data["maps"]:
         maps.append(await Dict_To_UBMO(i))
     
-    result = User(data["id"], maps, data["mappers"], data["items"], data["pp"], data["rolls_amount"], data["rank"])
+    result = User(data["id"], maps, data["mappers"], data["items"], data["pp"], data["rolls_amount"], data["rank"], data["roll_max"])
     
     return result
 
