@@ -78,12 +78,17 @@ async def User_To_Dict(user):
     
     return result
 
+async def Dict_to_UBMD(dict):
+    difficulty = User_BMD_Object(dict["sr"], dict["parent_id"], dict["id"], dict["title"], dict["artist"], dict["diff_name"], dict["duplicates"])
+    
+    return difficulty
+
 # Returns a UBMO object from given dict
 async def Dict_To_UBMO(data):
     diffs = []
     
     for i in data["difficulties"]:
-        diffs.append(await Dict_to_BeatmapDiff(i))
+        diffs.append(await Dict_to_UBMD(i))
     
     result = User_BM_Object(data["id"], data["title"], data["artist"], data["mapper"], data["status"], diffs)
     
@@ -115,6 +120,22 @@ async def BeatmapDiff_To_Dict(beatmap):
     }
     
     return result
+
+# Returns a Dict from a given UBMD object
+async def UBMD_To_Dict(beatmap_d):
+    result = {
+        "id": beatmap_d.id,
+        "title": beatmap_d.title,
+        "artist": beatmap_d.artist,
+        "parent_id": beatmap_d.parent_id,
+        "star_rating": beatmap_d.sr,
+        "rarity": beatmap_d.rarity,
+        "difficulty_name": beatmap_d.difficulty_name,
+        "duplicates": beatmap_d.duplicates
+    }
+    
+    return result
+
 
 # Returns a Dict from a given Beatmap_Difficulty_Cumulative_Range object
 async def BeatmapDiffCumulative_To_Dict(beatmap):

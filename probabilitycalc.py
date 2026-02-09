@@ -26,7 +26,7 @@ async def add_diffs_to_sorted_file():
     for key in json_object:       
         loaded_json = json_object[key]
         
-        beatmap = Dict_to_Beatmap(loaded_json)
+        beatmap = await Dict_to_Beatmap(loaded_json)
         
         for i in beatmap.difficulties:
             sorted_maps.append(await BeatmapDiff_To_Dict(i))

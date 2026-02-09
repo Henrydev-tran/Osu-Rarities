@@ -3,6 +3,7 @@ import os
 from beatmap import Beatmap, Beatmap_Difficulty, User_BM_Object
 from jsontools import *
 import aiofiles
+import asyncio
 
 from dotenv import load_dotenv
 
@@ -129,12 +130,12 @@ async def loadnpage():
     
     bms_page = await api.search_beatmapsets(filters=search_filter, page=page)
     
-    print(bms_page)
+    # print(bms_page)
     
     if len(bms_page.beatmapsets) == 0:
         return 0
     
-    json_object = await return_json("json/maps.json")
+    await maps.load_from("json/maps.json")
     
     for i in bms_page.beatmapsets:
         
@@ -145,11 +146,11 @@ async def loadnpage():
             
         mapset = Beatmap(i.id, i.title, i.artist, diffs, i.creator, i.status)
         
-        json_object[str(mapset.id)] = await Beatmap_To_Json(mapset)
+        maps.maps_json[str(mapset.id)] = await Beatmap_To_Json(mapset)
         
         print(f"Mapset with ID {mapset.id} has been loaded")
     
-    await save_to_json("json/maps.json", maps)
+    await maps.save_to("json/maps.json")
     
     async with aiofiles.open("json/bmpage.count", "w") as file:
         await file.write(str(page))
@@ -177,3 +178,5 @@ async def loadALL():
             await set_page_count(0)
             await change_year(await get_year() + 1)
             await set_query_year(await get_year())
+            
+# asyncio.run(loadALL())

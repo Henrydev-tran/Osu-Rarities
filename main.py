@@ -343,6 +343,7 @@ async def roll_random(ctx):
         embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{result["id"]}l.jpg")
         
         map_result = await Dict_to_BeatmapDiff(result)
+        ubmd = User_BMD_Object(map_result.sr, map_result.parent_id, map_result.id, map_result.title, map_result.artist, map_result.difficulty_name)
         
         parent = await find_ubmo(map_result.parent_id)
         
@@ -352,7 +353,7 @@ async def roll_random(ctx):
         embed.add_field(name="BeatmapID", value=result["id"])
         embed.add_field(name="Status", value=await get_status(parent.status))
         
-        await userdata.add_map(map_result)
+        await userdata.add_map(ubmd)
         
         await update_user(userdata)
         

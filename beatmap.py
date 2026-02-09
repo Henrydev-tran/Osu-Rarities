@@ -33,6 +33,17 @@ class Beatmap_Difficulty_Cumulative_Range:
         self.cumulative_probability = weight
         self.range = R
         self.difficulty_name = diff_name
+
+class User_BMD_Object:
+    def __init__(self, sr, parent_id, id, title, artist, diff_name, duplicates=1):
+        self.id = id
+        self.sr = sr
+        self.parent_id = parent_id
+        self.rarity = Calculate_Rarity(self.sr)
+        self.title = title
+        self.artist = artist
+        self.difficulty_name = diff_name
+        self.duplicates = duplicates
         
 class User_BM_Object:
     def __init__(self, id, title, artist, mapper, status, difficulties=[]):
@@ -44,6 +55,11 @@ class User_BM_Object:
         self.status = status
         
     async def add_difficulty(self, diff):
+        for i in self.difficulties:
+           if i.id == diff.id:
+               i.duplicates += 1
+               return              
+        
         self.difficulties.append(diff)
         
     async def jsonify_diffs(self):
@@ -57,7 +73,8 @@ class User_BM_Object:
                 "rarity": i.rarity,
                 "title": i.title,
                 "artist": i.artist,
-                "difficulty_name": i.difficulty_name
+                "difficulty_name": i.difficulty_name,
+                "duplicates": i.duplicates
             })
         
         return diffs
