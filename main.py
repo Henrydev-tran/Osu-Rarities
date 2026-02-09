@@ -83,7 +83,7 @@ class MapPaginator(discord.ui.View):
         for m in self.pages[self.index]:
             difficulties = "\n".join(
                 f"{get_star_emoji(d['star_rating'])} "
-                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity 1 in {d['rarity']}) -- ID: {d['id']}"
+                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity 1 in {d['rarity']}) -- ID: {d['id']} -- # {d["duplicates"]}"
                 for d in m["difficulties"]
             )
 
@@ -489,7 +489,7 @@ async def lookup(ctx, beatmapid):
             
             for y in userdata.maps[ids.index(int(beatmapid))].difficulties:
                 if i.id == y.id:
-                    owned.append(1)
+                    owned.append(y.duplicates)
                     owned_var2 = True
             
             if owned_var2:

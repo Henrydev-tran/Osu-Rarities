@@ -79,7 +79,7 @@ async def User_To_Dict(user):
     return result
 
 async def Dict_to_UBMD(dict):
-    difficulty = User_BMD_Object(dict["sr"], dict["parent_id"], dict["id"], dict["title"], dict["artist"], dict["diff_name"], dict["duplicates"])
+    difficulty = User_BMD_Object(dict["star_rating"], dict["parent_id"], dict["id"], dict["title"], dict["artist"], dict["difficulty_name"], dict["duplicates"])
     
     return difficulty
 
