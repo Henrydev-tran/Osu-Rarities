@@ -54,6 +54,13 @@ def Calculate_Rarity(sr):
 
     return round(rarity)
 
+# Calculate the pp of a given star rating, equation posted in dev-notes in development server
+def calculatepp(sr):
+    b = 1000 ** (1/10)
+    a = 10 / b
+    pp = a * (b ** sr)
+    return round(pp)
+
 # Star colors of beatmaps for embeds
 star_colors = [
     0x00FFD1,  

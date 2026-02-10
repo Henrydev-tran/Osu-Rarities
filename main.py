@@ -22,7 +22,7 @@ import datetime
 client = commands.Bot(command_prefix='o!', intents=discord.Intents(messages=True, guilds=True, message_content=True))
 client.remove_command("help")
 
-
+active_views = {}
 
 ########################## UTILS ##########################
 
@@ -62,7 +62,7 @@ class MapPaginator(discord.ui.View):
         super().__init__(timeout=120)
         self.original_maps = maps  # keep a reference to the unsorted maps
         self.maps = maps[:]        # working copy (can be sorted)
-        self.pages = chunk_list(self.maps, per_page)
+        self.pages = chunk_list(self.maps, per_page) 
         self.index = 0
         self.username = username
 
@@ -74,7 +74,21 @@ class MapPaginator(discord.ui.View):
         self.pages = chunk_list(self.maps, len(self.pages[0]))
         self.index = 0  # reset to first page
 
-    def make_embed(self):
+    def make_embed(self):        
+        if len(self.pages) == 0:
+            embed = discord.Embed(
+                title=f"{self.username}'s Maps",
+                color=discord.Color.blurple()
+            )
+            
+            embed.add_field(
+                name=f"You currently have no maps.",
+                value="Use o!roll to roll for maps!",
+                inline=False
+            )
+            
+            return embed
+        
         embed = discord.Embed(
             title=f"{self.username}'s Maps",
             color=discord.Color.blurple()
@@ -118,6 +132,272 @@ class MapPaginator(discord.ui.View):
             ]
             super().__init__(placeholder="Sort maps by...", min_values=1, max_values=1, options=options)
 
+        async def callback(self, interaction: discord.Interaction):            
+            if self.values[0] == "asc":
+                self.paginator.maps = sorted(self.paginator.original_maps, key=lambda m: min(d['rarity'] for d in m['difficulties']))
+            elif self.values[0] == "desc":
+                self.paginator.maps = sorted(self.paginator.original_maps, key=lambda m: max(d['rarity'] for d in m['difficulties']), reverse=True)
+            else:
+                self.paginator.maps = self.paginator.original_maps[:]  # reset
+
+            self.paginator.update_pages()
+            await interaction.response.edit_message(embed=self.paginator.make_embed(), view=self.paginator)
+            
+
+# Class displays maps in a paging system and sorting to sell
+class SellingPaginator(discord.ui.View):
+    def __init__(self, user, maps, username, per_page=5):
+        super().__init__(timeout=120)
+        self.original_maps = maps  # keep a reference to the unsorted maps
+        self.maps = maps[:]        # working copy (can be sorted)
+        self.pages = chunk_list(self.maps, per_page)
+        self.mapsinqueue = []
+        self.index = 0
+        self.username = username
+        self.user = user
+
+        # add dropdown menu into the view
+        self.add_item(self.SortDropdown(self))
+
+    def update_pages(self):
+        """Re-split maps into pages after sorting"""
+        self.pages = chunk_list(self.maps, len(self.pages[0]))
+        self.index = 0  # reset to first page
+
+    def make_embed(self):
+        if len(self.pages) == 0:
+            embed = discord.Embed(
+                title=f"Selling Maps",
+                color=discord.Color.blurple()
+            )
+            
+            embed.add_field(
+                name=f"You currently have no maps.",
+                value="Use o!roll to roll for maps!",
+                inline=False
+            )
+            
+            return embed
+        
+        embed = discord.Embed(
+            title="Selling Maps",
+            color=discord.Color.blurple()
+        )
+
+        for m in self.pages[self.index]:
+            difficulties = "\n".join(
+                f"{get_star_emoji(d['star_rating'])} "
+                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity 1 in {d['rarity']}) -- ID: {d['id']} -- # {d["duplicates"]}"
+                for d in m["difficulties"]
+            )
+
+            embed.add_field(
+                name=f"{m['title']} — {m['artist']} (by {m['mapper']}) -- ID: {m['id']}",
+                value=difficulties,
+                inline=False
+            )
+
+        embed.set_footer(text=f"Page {self.index+1}/{len(self.pages)}")
+        return embed
+    
+    async def checkmaps_updatebuttons(self):
+        if len(self.pages[self.index])>0:
+            if self.pages[self.index][0] in self.mapsinqueue:
+                self.sm1.style = discord.ButtonStyle.success
+            else:
+                self.sm1.style = discord.ButtonStyle.primary
+        else:        
+            self.sm1.style = discord.ButtonStyle.primary
+        
+        if len(self.pages[self.index])>1:
+            if self.pages[self.index][1] in self.mapsinqueue:
+                self.sm2.style = discord.ButtonStyle.success
+            else:
+                self.sm2.style = discord.ButtonStyle.primary
+        else:        
+            self.sm2.style = discord.ButtonStyle.primary
+            
+        if len(self.pages[self.index])>2:
+            if self.pages[self.index][2] in self.mapsinqueue:
+                self.sm3.style = discord.ButtonStyle.success
+            else:
+                self.sm3.style = discord.ButtonStyle.primary
+        else:        
+            self.sm3.style = discord.ButtonStyle.primary
+            
+        if len(self.pages[self.index])>3:
+            if self.pages[self.index][3] in self.mapsinqueue:
+                self.sm4.style = discord.ButtonStyle.success
+            else:
+                self.sm4.style = discord.ButtonStyle.primary
+        else:        
+            self.sm4.style = discord.ButtonStyle.primary
+            
+        if len(self.pages[self.index])>4:
+            if self.pages[self.index][4] in self.mapsinqueue:
+                self.sm5.style = discord.ButtonStyle.success
+            else:
+                self.sm5.style = discord.ButtonStyle.primary
+        else:        
+            self.sm5.style = discord.ButtonStyle.primary 
+
+            
+    @discord.ui.button(label="1️⃣", style=discord.ButtonStyle.primary)
+    async def sm1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        selectedmap = self.pages[self.index][0]
+        
+        if selectedmap in self.mapsinqueue:
+            self.mapsinqueue.remove(selectedmap)
+            print(self.mapsinqueue)
+            await self.checkmaps_updatebuttons()
+            await interaction.response.edit_message(view=self)
+            
+            return
+        
+        self.mapsinqueue.append(selectedmap)
+        print(self.mapsinqueue)
+        await self.checkmaps_updatebuttons()
+        await interaction.response.edit_message(view=self)
+    
+    @discord.ui.button(label="2️⃣", style=discord.ButtonStyle.primary)
+    async def sm2(self, interaction: discord.Interaction, button: discord.ui.Button):    
+        if not len(self.pages[self.index])>1:
+            await interaction.message.reply("Map selection failed")
+            await interaction.response.edit_message(view=self)
+            return
+            
+        selectedmap = self.pages[self.index][1]
+        
+        if selectedmap in self.mapsinqueue:
+            self.mapsinqueue.remove(selectedmap)
+            print(self.mapsinqueue)
+            await self.checkmaps_updatebuttons()
+            await interaction.response.edit_message(view=self)
+            
+            return
+        
+        self.mapsinqueue.append(selectedmap)
+        print(self.mapsinqueue)
+        await self.checkmaps_updatebuttons()
+        await interaction.response.edit_message(view=self)
+        
+    @discord.ui.button(label="3️⃣", style=discord.ButtonStyle.primary)
+    async def sm3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not len(self.pages[self.index])>2:
+            await interaction.message.reply("Map selection failed")
+            await interaction.response.edit_message(view=self)
+            return
+        
+        selectedmap = self.pages[self.index][2]
+        
+        if selectedmap in self.mapsinqueue:
+            self.mapsinqueue.remove(selectedmap)
+            print(self.mapsinqueue)
+            await self.checkmaps_updatebuttons()
+            await interaction.response.edit_message(view=self)
+            
+            return
+        
+        self.mapsinqueue.append(selectedmap)
+        print(self.mapsinqueue)
+        await self.checkmaps_updatebuttons()
+        await interaction.response.edit_message(view=self)
+        
+    @discord.ui.button(label="4️⃣", style=discord.ButtonStyle.primary)
+    async def sm4(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not len(self.pages[self.index])>3:
+            await interaction.message.reply("Map selection failed")
+            await interaction.response.edit_message(view=self)
+            return
+        
+        selectedmap = self.pages[self.index][3]
+        
+        if selectedmap in self.mapsinqueue:
+            self.mapsinqueue.remove(selectedmap)
+            print(self.mapsinqueue)
+            await self.checkmaps_updatebuttons()
+            await interaction.response.edit_message(view=self)
+            
+            return
+        
+        self.mapsinqueue.append(selectedmap)
+        print(self.mapsinqueue)
+        await self.checkmaps_updatebuttons()
+        await interaction.response.edit_message(view=self)
+        
+    @discord.ui.button(label="5️⃣", style=discord.ButtonStyle.primary)
+    async def sm5(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not len(self.pages[self.index])>4:
+            await interaction.message.reply("Map selection failed")
+            await interaction.response.edit_message(view=self)
+            return
+        
+        selectedmap = self.pages[self.index][4]
+        
+        if selectedmap in self.mapsinqueue:
+            self.mapsinqueue.remove(selectedmap)
+            print(self.mapsinqueue)
+            await self.checkmaps_updatebuttons()
+            await interaction.response.edit_message(view=self)
+            
+            return
+        
+        self.mapsinqueue.append(selectedmap)
+        print(self.mapsinqueue)
+        await self.checkmaps_updatebuttons()
+        await interaction.response.edit_message(view=self)
+        
+    
+    @discord.ui.button(label="◀️", style=discord.ButtonStyle.secondary)
+    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index > 0:
+            self.index -= 1
+            await self.checkmaps_updatebuttons()
+            await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    @discord.ui.button(label="▶️", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index < len(self.pages) - 1:
+            self.index += 1
+            await self.checkmaps_updatebuttons()
+            await interaction.response.edit_message(embed=self.make_embed(), view=self)
+            
+    @discord.ui.button(label="All", style=discord.ButtonStyle.danger)
+    async def all(self, interaction: discord.Interaction, button: discord.ui.Button):
+        for i in self.pages[self.index]:
+            if i in self.mapsinqueue:
+                self.mapsinqueue.remove(i)
+            self.mapsinqueue.append(i)
+            
+        await self.checkmaps_updatebuttons()
+        
+        await interaction.response.edit_message(view=self)
+    
+    @discord.ui.button(label="Sell", style=discord.ButtonStyle.success)
+    async def sell(self, interaction: discord.Interaction, button: discord.ui.Button):
+        print(self.user.maps)
+        ids_to_remove = {d["id"] for d in self.mapsinqueue}
+        self.user.maps = [obj for obj in self.user.maps if obj.id not in ids_to_remove]
+        print(self.user.maps)
+        
+        await interaction.message.reply(f"{len(ids_to_remove)} map(s) sold.")
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+                
+        await update_user(self.user)
+        await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    class SortDropdown(discord.ui.Select):
+        def __init__(self, paginator):
+            self.paginator = paginator
+            options = [
+                discord.SelectOption(label="Default order", value="default"),
+                discord.SelectOption(label="Rarity ↑ (low → high)", value="asc"),
+                discord.SelectOption(label="Rarity ↓ (high → low)", value="desc"),
+            ]
+            super().__init__(placeholder="Sort maps by...", min_values=1, max_values=1, options=options)
+
         async def callback(self, interaction: discord.Interaction):
             if self.values[0] == "asc":
                 self.paginator.maps = sorted(self.paginator.original_maps, key=lambda m: min(d['rarity'] for d in m['difficulties']))
@@ -128,7 +408,6 @@ class MapPaginator(discord.ui.View):
 
             self.paginator.update_pages()
             await interaction.response.edit_message(embed=self.paginator.make_embed(), view=self.paginator)
-
 
             
 ###########################################################
@@ -231,6 +510,47 @@ async def loadmanypages(ctx, num):
     
     await ctx.message.reply("You do not have the permission to use this command.")  
     
+@client.command("sellmaps")
+async def sellmaps(ctx, id = None):
+    userid = ctx.author.id
+    
+    if userid in active_views:
+        msg, view = active_views.pop(userid)
+
+        for child in view.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+
+        try:
+            await msg.edit(view=view)
+        except discord.NotFound:
+            pass
+        
+        await ctx.reply("Your previous menu was disabled.", mention_author=False)
+    
+    await login(userid)
+    
+    userdata = None
+    username = None
+    
+    if id == None:
+        userdata = await login(userid)
+        username = ctx.author.display_name
+    else:
+        userdata = await login(id)
+        user = await client.fetch_user(id)
+        username = user.name
+        
+    
+    user_json = await User_To_Dict(userdata)
+    
+    maps = user_json["maps"]
+    
+    view = SellingPaginator(userdata, maps, username, per_page=5)
+    msg = await ctx.send(embed=view.make_embed(), view=view)
+    
+    active_views[userid] = (msg, view)
+
 # Check the amount of maps loaded in the database
 @client.command("mapsloaded")
 async def loadedamount(ctx):
@@ -522,13 +842,29 @@ async def lookup(ctx, beatmapid):
     
 @client.command("inventory")
 async def inventory(ctx, id = None):
-    await login(ctx.author.id)
+    userid = ctx.author.id
+    
+    if userid in active_views:
+        msg, view = active_views.pop(userid)
+
+        for child in view.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+
+        try:
+            await msg.edit(view=view)
+        except discord.NotFound:
+            pass
+        
+        await ctx.reply("Your previous menu was disabled.", mention_author=False)
+    
+    await login(userid)
     
     userdata = None
     username = None
     
     if id == None:
-        userdata = await login(ctx.author.id)
+        userdata = await login(userid)
         username = ctx.author.display_name
     else:
         userdata = await login(id)
@@ -541,7 +877,9 @@ async def inventory(ctx, id = None):
     maps = user_json["maps"]
     
     view = MapPaginator(maps, username, per_page=10)
-    await ctx.send(embed=view.make_embed(), view=view)
+    msg = await ctx.send(embed=view.make_embed(), view=view)
+    
+    active_views[userid] = (msg, view)
     
     
 @client.command("recalculate_rarities")

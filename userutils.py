@@ -52,6 +52,9 @@ async def Dict_To_User(data):
     
     return result
 
+async def give_rewards(user, maps):
+    
+
 # UserPool object that stores all users in User object form and json form
 class UserPool:
     def __init__(self, users={}, users_json={}):
