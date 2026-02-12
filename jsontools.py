@@ -68,7 +68,6 @@ async def User_To_Dict(user):
     result = {
         "id": user.id,
         "maps": maps,
-        "mappers": user.mappers,
         "items": user.items,
         "pp": user.pp,
         "rolls_amount": user.rolls_amount,
