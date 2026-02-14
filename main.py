@@ -6,6 +6,7 @@ import discord
 from discord.ext import commands
 
 from user_handling import *
+from userutils import give_rewards
 
 from dotenv import load_dotenv
 
@@ -142,15 +143,29 @@ class MapPaginator(discord.ui.View):
 
             self.paginator.update_pages()
             await interaction.response.edit_message(embed=self.paginator.make_embed(), view=self.paginator)
-            
 
 # Class displays maps in a paging system and sorting to sell
 class SellingPaginator(discord.ui.View):
     def __init__(self, user, maps, username, per_page=5):
         super().__init__(timeout=120)
-        self.original_maps = maps  # keep a reference to the unsorted maps
-        self.maps = maps[:]        # working copy (can be sorted)
-        self.pages = chunk_list(self.maps, per_page)
+        self.original_maps = maps  # keep a reference to the unsorted maps  
+        self.undividedmaps = []  
+        def divide_maps(maps):
+            result = []
+            
+            for i in maps:
+                for y in i.difficulties:
+                    new = User_BM_Object(i.id, i.title, i.artist, i.mapper, i.status, [y])
+                    result.append(new)
+            
+            return result
+        
+        self.maps = divide_maps(user.maps)
+        
+        for i in self.maps:
+            self.undividedmaps.append(UBMO_To_Dict_nonsync(i))
+        
+        self.pages = chunk_list(self.undividedmaps, per_page)
         self.mapsinqueue = []
         self.index = 0
         self.username = username
@@ -202,7 +217,7 @@ class SellingPaginator(discord.ui.View):
     
     async def checkmaps_updatebuttons(self):
         if len(self.pages[self.index])>0:
-            if self.pages[self.index][0] in self.mapsinqueue:
+            if self.pages[self.index][0]["difficulties"][0] in self.mapsinqueue:
                 self.sm1.style = discord.ButtonStyle.success
             else:
                 self.sm1.style = discord.ButtonStyle.primary
@@ -210,7 +225,7 @@ class SellingPaginator(discord.ui.View):
             self.sm1.style = discord.ButtonStyle.primary
         
         if len(self.pages[self.index])>1:
-            if self.pages[self.index][1] in self.mapsinqueue:
+            if self.pages[self.index][1]["difficulties"][0] in self.mapsinqueue:
                 self.sm2.style = discord.ButtonStyle.success
             else:
                 self.sm2.style = discord.ButtonStyle.primary
@@ -218,7 +233,7 @@ class SellingPaginator(discord.ui.View):
             self.sm2.style = discord.ButtonStyle.primary
             
         if len(self.pages[self.index])>2:
-            if self.pages[self.index][2] in self.mapsinqueue:
+            if self.pages[self.index][2]["difficulties"][0] in self.mapsinqueue:
                 self.sm3.style = discord.ButtonStyle.success
             else:
                 self.sm3.style = discord.ButtonStyle.primary
@@ -226,7 +241,7 @@ class SellingPaginator(discord.ui.View):
             self.sm3.style = discord.ButtonStyle.primary
             
         if len(self.pages[self.index])>3:
-            if self.pages[self.index][3] in self.mapsinqueue:
+            if self.pages[self.index][3]["difficulties"][0] in self.mapsinqueue:
                 self.sm4.style = discord.ButtonStyle.success
             else:
                 self.sm4.style = discord.ButtonStyle.primary
@@ -234,7 +249,7 @@ class SellingPaginator(discord.ui.View):
             self.sm4.style = discord.ButtonStyle.primary
             
         if len(self.pages[self.index])>4:
-            if self.pages[self.index][4] in self.mapsinqueue:
+            if self.pages[self.index][4]["difficulties"][0] in self.mapsinqueue:
                 self.sm5.style = discord.ButtonStyle.success
             else:
                 self.sm5.style = discord.ButtonStyle.primary
@@ -244,7 +259,7 @@ class SellingPaginator(discord.ui.View):
             
     @discord.ui.button(label="1️⃣", style=discord.ButtonStyle.primary)
     async def sm1(self, interaction: discord.Interaction, button: discord.ui.Button):
-        selectedmap = self.pages[self.index][0]
+        selectedmap = self.pages[self.index][0]["difficulties"][0]
         
         if selectedmap in self.mapsinqueue:
             self.mapsinqueue.remove(selectedmap)
@@ -266,7 +281,7 @@ class SellingPaginator(discord.ui.View):
             await interaction.response.edit_message(view=self)
             return
             
-        selectedmap = self.pages[self.index][1]
+        selectedmap = self.pages[self.index][1]["difficulties"][0]
         
         if selectedmap in self.mapsinqueue:
             self.mapsinqueue.remove(selectedmap)
@@ -288,7 +303,7 @@ class SellingPaginator(discord.ui.View):
             await interaction.response.edit_message(view=self)
             return
         
-        selectedmap = self.pages[self.index][2]
+        selectedmap = self.pages[self.index][2]["difficulties"][0]
         
         if selectedmap in self.mapsinqueue:
             self.mapsinqueue.remove(selectedmap)
@@ -310,7 +325,7 @@ class SellingPaginator(discord.ui.View):
             await interaction.response.edit_message(view=self)
             return
         
-        selectedmap = self.pages[self.index][3]
+        selectedmap = self.pages[self.index][3]["difficulties"][0]
         
         if selectedmap in self.mapsinqueue:
             self.mapsinqueue.remove(selectedmap)
@@ -332,7 +347,7 @@ class SellingPaginator(discord.ui.View):
             await interaction.response.edit_message(view=self)
             return
         
-        selectedmap = self.pages[self.index][4]
+        selectedmap = self.pages[self.index][4]["difficulties"][0]
         
         if selectedmap in self.mapsinqueue:
             self.mapsinqueue.remove(selectedmap)
@@ -377,10 +392,58 @@ class SellingPaginator(discord.ui.View):
     async def sell(self, interaction: discord.Interaction, button: discord.ui.Button):
         print(self.user.maps)
         ids_to_remove = {d["id"] for d in self.mapsinqueue}
-        self.user.maps = [obj for obj in self.user.maps if obj.id not in ids_to_remove]
-        print(self.user.maps)
         
-        await interaction.message.reply(f"{len(ids_to_remove)} map(s) sold.")
+        print(ids_to_remove)
+
+        removed_difficulties = []
+        kept_maps = []
+
+        for m in self.user.maps:
+            new_diffs = []
+            for diff in m.difficulties:
+                if diff.id in ids_to_remove:
+                    removed_difficulties.append(diff)
+                else:
+                    new_diffs.append(diff)
+
+            m.difficulties = new_diffs
+
+            # keep the map only if it still has difficulties
+            if m.difficulties:
+                kept_maps.append(m)
+                
+        expanded_removed_difficulties = []
+
+        for diff in removed_difficulties:
+            expanded_removed_difficulties.append(diff)
+
+            if diff.duplicates > 0:
+                for _ in range(diff.duplicates):
+                    expanded_removed_difficulties.append(copy.deepcopy(diff))
+
+        self.user.maps = kept_maps
+
+        print(self.user.maps)
+        print(removed_difficulties)
+        
+        rewards = await give_rewards(self.user, expanded_removed_difficulties)
+        
+        mapssold = 0
+        
+        for i in removed_difficulties:
+            mapssold += i.duplicates
+        
+        await interaction.message.reply(f"{mapssold} map(s) sold.")
+        
+        await rewards.convert_shards()
+        
+        message = (
+            f"{rewards.pp} PP gained. \n"
+            + "\n".join(f"{k.lower()}: {v}" for k, v in rewards.shards.items())
+        )
+        
+        await interaction.message.reply(message)
+        
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
@@ -604,11 +667,11 @@ async def disable_rolling(ctx):
     
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         if rolling_disabled:
-            rolling_disabled = False
             await ctx.message.reply("Rolling Enabled.")
         if not rolling_disabled:
-            rolling_disabled = True
             await ctx.message.reply("Rolling disabled.")
+            
+        rolling_disabled = not rolling_disabled
             
         return
     

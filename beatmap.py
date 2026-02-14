@@ -78,3 +78,20 @@ class User_BM_Object:
             })
         
         return diffs
+    
+    def jsonify_diffs_nonsync(self):
+        diffs = []
+        
+        for i in self.difficulties:
+            diffs.append({
+                "id": i.id,
+                "star_rating": i.sr,
+                "parent_id": i.parent_id,
+                "rarity": i.rarity,
+                "title": i.title,
+                "artist": i.artist,
+                "difficulty_name": i.difficulty_name,
+                "duplicates": i.duplicates
+            })
+        
+        return diffs

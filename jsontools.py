@@ -106,6 +106,19 @@ async def UBMO_To_Dict(ubmo):
     
     return result
 
+# There's definitely better ways to do this but cut me some slack
+def UBMO_To_Dict_nonsync(ubmo):
+    result = {
+        "id": ubmo.id,
+        "title": ubmo.title,
+        "artist": ubmo.artist,
+        "difficulties": ubmo.jsonify_diffs_nonsync(),
+        "mapper": ubmo.mapper,
+        "status": ubmo.status
+    }
+    
+    return result
+
 # Returns a Dict from a given Beatmap_Difficulty object
 async def BeatmapDiff_To_Dict(beatmap):
     result = {
