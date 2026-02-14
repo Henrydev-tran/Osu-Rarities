@@ -1,4 +1,4 @@
-class ItemInstance:
+class Item:
     def __init__(self, rarity, cost, name, function, id, description):
         self.rarity = rarity
         self.cost = cost
@@ -7,26 +7,18 @@ class ItemInstance:
         self.id = id
         self.description = description
         
-class ShardInstance(ItemInstance):
-    def __init__(self, rarity, cost, name, function, id, shardrarity, description):
+class Shard(Item):
+    def __init__(self, rarity, cost, name, function, id, description, shardrarity):
         super().__init__(rarity, cost, name, function, id, description)
         self.shardrarity = shardrarity
-
-class MapperInstance(ItemInstance):
-    def __init__(self, rarity, cost, name, function, id, mapperbuff, buffamount, description):
+        
+class Mapper(Item):
+    def __init__(self, rarity, cost, name, function, id, description, mapperbuff, buffamount):
         super().__init__(rarity, cost, name, function, id, description)
         self.mapperbuff = mapperbuff
         self.buffamount = buffamount
 
-class GearInstance(ItemInstance):
-    def __init__(self, rarity, cost, name, function, id, luckincrease, description):
+class Gear(Item):
+    def __init__(self, rarity, cost, name, function, id, description, luckincrease):
         super().__init__(rarity, cost, name, function, id, description)
         self.luckincrease = luckincrease
-
-class CollectionInstance(ItemInstance):
-    def __init__(self, rarity, cost, name, function, id, description):
-        super().__init__(rarity, cost, name, function, id, description)
-        
-class Item:
-    def __init__(self, template):
-        self.template = template

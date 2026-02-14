@@ -679,7 +679,7 @@ async def disable_rolling(ctx):
         
 # Add all difficulties to sorted file for sorting (dev only). Step 1
 @client.command("load_diffs_sorted")
-async def load_nmz_diffs(ctx):
+async def load_diffs_sorted(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         await add_diffs_to_sorted_file()
         
@@ -703,7 +703,7 @@ async def load_nmz_diffs(ctx):
     
 # Calculate the ranges of rarities for sorted beatmaps (dev only). Step 3
 @client.command("calculate_ranges")
-async def load_nmz_diffs(ctx):
+async def calc_ranges(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         await add_ranges_to_file()
         
