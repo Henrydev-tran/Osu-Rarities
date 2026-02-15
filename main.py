@@ -6,7 +6,7 @@ import discord
 from discord.ext import commands
 
 from user_handling import *
-from userutils import give_rewards
+from userutils import give_rewards, SHARD_LIST, SHARD_RANK
 
 from dotenv import load_dotenv
 
@@ -143,6 +143,126 @@ class MapPaginator(discord.ui.View):
 
             self.paginator.update_pages()
             await interaction.response.edit_message(embed=self.paginator.make_embed(), view=self.paginator)
+            
+class ItemCategorySelect(discord.ui.Select):
+    def __init__(self, user_items, paginator):
+        self.user_items = user_items
+        self.paginator = paginator
+
+        options = [
+            discord.SelectOption(
+                label=category,
+                value=category
+            )
+            for category in user_items.keys()
+        ]
+
+        super().__init__(
+            placeholder="Select item type...",
+            options=options,
+            min_values=1,
+            max_values=1
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        category = self.values[0]
+
+        items = flatten_category(self.user_items, category)
+
+        # Sort shards by rarity order
+        if category == "Shards":
+            items.sort(key=lambda item: SHARD_RANK.get(item.shardrarity, 0))
+
+        # Reset paginator
+        self.paginator.items = items
+        self.paginator.pages = chunk_list(items, self.paginator.per_page)
+        self.paginator.index = 0
+        self.paginator.current_category = category
+
+        await interaction.response.edit_message(
+            embed=self.paginator.make_embed(),
+            view=self.paginator
+        )
+            
+async def flatten_items(items_dict):
+    """
+    Turns:
+    {"Shards": {"Common": Shard, "Uncommon": Shard}}
+    into:
+    [Shard, Shard]
+    """
+    items = []
+
+    for category, category_items in items_dict.items():
+        for item in category_items.values():
+            items.append(item)
+
+    return items
+
+def flatten_category(items_dict, category: str):
+    """
+    {"Shards": {"Common": Shard, "Uncommon": Shard}}
+    → [Shard, Shard]
+    """
+    category_items = items_dict.get(category, {})
+    return list(category_items.values())
+
+def shard_rarity_index(rarity: str) -> int:
+    return SHARD_RANK.get(rarity, 0)
+
+class ItemPaginator(discord.ui.View):
+    def __init__(self, user_items, username, per_page=8):
+        super().__init__(timeout=120)
+        self.user_items = items
+        self.username = username
+        self.per_page = per_page
+        self.index = 0
+        self.current_category = "Shards"
+
+        # Initial load
+        self.items = flatten_category(user_items, "Shards")
+        self.items.sort(key=lambda i: SHARD_RANK.get(i.shardrarity, 0))
+        self.pages = chunk_list(self.items, per_page)
+
+        self.add_item(ItemCategorySelect(user_items, self))
+
+    def make_embed(self):
+        embed = discord.Embed(
+            title=f"{self.username}'s {self.current_category}",
+            color=discord.Color.green()
+        )
+
+        if not self.pages:
+            embed.description = "No items in this category."
+            return embed
+
+        for item in self.pages[self.index]:
+            embed.add_field(
+                name=f"🔹 {item.name} ×{item.duplicates}",
+                value=(
+                    f"**Shard Rarity:** {item.shardrarity}\n"
+                    f"**Value:** {item.value} PP\n"
+                    f"{item.function}\n"
+                    f"{item.description}"
+                ),
+                inline=False
+            )
+
+        embed.set_footer(text=f"Page {self.index + 1}/{len(self.pages)}")
+        return embed
+
+    @discord.ui.button(label="◀️", style=discord.ButtonStyle.secondary)
+    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index > 0:
+            self.index -= 1
+            await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    @discord.ui.button(label="▶️", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index < len(self.pages) - 1:
+            self.index += 1
+            await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
 
 # Class displays maps in a paging system and sorting to sell
 class SellingPaginator(discord.ui.View):
@@ -417,7 +537,7 @@ class SellingPaginator(discord.ui.View):
         for diff in removed_difficulties:
             expanded_removed_difficulties.append(diff)
 
-            if diff.duplicates > 0:
+            if diff.duplicates > 1:
                 for _ in range(diff.duplicates):
                     expanded_removed_difficulties.append(copy.deepcopy(diff))
 
@@ -425,8 +545,10 @@ class SellingPaginator(discord.ui.View):
 
         print(self.user.maps)
         print(removed_difficulties)
+        print("expanded removed")
+        print(expanded_removed_difficulties)
         
-        rewards = await give_rewards(self.user, expanded_removed_difficulties)
+        rewards = await give_rewards(expanded_removed_difficulties)
         
         mapssold = 0
         
@@ -435,12 +557,20 @@ class SellingPaginator(discord.ui.View):
         
         await interaction.message.reply(f"{mapssold} map(s) sold.")
         
-        await rewards.convert_shards()
-        
         message = (
             f"{rewards.pp} PP gained. \n"
-            + "\n".join(f"{k.lower()}: {v}" for k, v in rewards.shards.items())
+            + "\n".join(f"{k}: {v.duplicates}" for k, v in rewards.shards.items())
         )
+        
+        print("shard dupes")
+        print(rewards.shards["Common"].duplicates)
+        
+        for y in rewards.shards.values():
+            await self.user.add_item(y, "Shard")
+            
+        await self.user.change_pp(rewards.pp)
+            
+        print(self.user.items)
         
         await interaction.message.reply(message)
         
@@ -613,6 +743,26 @@ async def sellmaps(ctx, id = None):
     msg = await ctx.send(embed=view.make_embed(), view=view)
     
     active_views[userid] = (msg, view)
+
+@client.command("balance")
+async def balance(ctx):
+    userdata = await login(ctx.author.id)
+    
+    await ctx.message.reply(f"You currently have {userdata.pp} PP.")
+    
+@client.command("items")
+async def items(ctx):
+    username = ctx.author.display_name
+    userdata = await login(ctx.author.id)
+    raw_items = userdata.items 
+
+    if not raw_items or not raw_items.get("Shards"):
+        await ctx.message.reply("You have no items.")
+        return
+
+    view = ItemPaginator(raw_items, username, per_page=8)
+    await ctx.send(embed=view.make_embed(), view=view)
+
 
 # Check the amount of maps loaded in the database
 @client.command("mapsloaded")

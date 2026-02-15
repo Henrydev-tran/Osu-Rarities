@@ -1,7 +1,9 @@
 from loadmaps import find_ubmo, return_json, save_to_json, User_To_Dict, BeatmapDiff_To_Dict
-from jsontools import Dict_To_UBMO, UBMO_To_Dict
+from jsontools import Dict_To_UBMO, UBMO_To_Dict, Dict_To_Item
 import random
 from raritycalculation import calculatepp
+from item import SHARDS
+import copy
 
 # User class for...users obviously why do you even need this comment
 class User:
@@ -31,10 +33,13 @@ class User:
         self.mappers.append(mapper)
     
     async def add_item(self, item, type):
-        try:
-            self.item[type].append(item)
-        except:
-            self.item[type] = [item]
+        if type == "Shard":
+            shards = self.items.setdefault("Shards", {})
+            
+            try:
+                shards[item.shardrarity].duplicates += item.duplicates
+            except:
+                shards[item.shardrarity] = item                
     
     async def change_pp(self, amount):
         self.pp += amount
@@ -54,36 +59,49 @@ async def Dict_To_User(data):
     
     for i in data["maps"]:
         maps.append(await Dict_To_UBMO(i))
+        
+    items = {}
     
-    result = User(data["id"], maps, data["items"], data["pp"], data["rolls_amount"], data["rank"], data["roll_max"])
+    for key1, val1 in data["items"].items():
+        if key1 == "Shards":
+            for key2, val2 in val1.items():
+                items.setdefault("Shards", {})
+                items["Shards"][key2] = await Dict_To_Item(val2)
+    
+    result = User(data["id"], maps, items, data["pp"], data["rolls_amount"], data["rank"], data["roll_max"])
     
     return result
 
 SHARD_LIST = [
     "None",
-    "Common Shards",
-    "Uncommon Shards",
-    "Rare Shards",
-    "Epic Shards",
-    "Mythic Shards",
-    "Legendary Shards",
-    "Chromatic Shards",
-    "Ultra Shards"
+    "Common",
+    "Uncommon",
+    "Rare",
+    "Epic",
+    "Mythic",
+    "Legendary",
+    "Chromatic",
+    "Ultra"
 ]
+
+SHARD_RANK = {rarity: i for i, rarity in enumerate(SHARD_LIST)}
 
 class SellRewards:
     def __init__(self, pp, shards):
         self.pp = pp
         self.baseshards = shards
+        self.oldshards = []
         self.shards = {}
     
     async def convert_shards(self):
         for i in self.baseshards:
             try:
-                self.shards[SHARD_LIST[i]] += 1
+                self.shards[SHARD_LIST[i]].duplicates += 1
             except:
-                self.shards[SHARD_LIST[i]] = 1
-
+                self.shards[SHARD_LIST[i]] = copy.deepcopy(SHARDS[SHARD_LIST[i]])
+        
+        self.baseshards = []
+                
     async def get_shards(self):
         return self.shards
     
@@ -180,15 +198,29 @@ async def get_shards(sr: float) -> list[int]:
     raise ValueError("SR out of supported range")
 
 
-async def give_rewards(user, maps):
+async def give_rewards(maps):
     shards = []
     pp = 0
     
+    print("maps to gr")
+    print(maps)
+    
     for i in maps:
         shardresult = await get_shards(i.sr)
+        
+        print("shards")
+        print(shards)
+        
         shards.extend(shardresult)
         
-        ppresult = await calculatepp(i.sr)
+        print("shardresult")
+        print(shardresult)
+        
+        ppresult = 0
+        if i.sr > 15:
+            ppresult = await calculatepp(15)
+        else:
+            ppresult = await calculatepp(i.sr)
         pp += ppresult
         
     rewards = SellRewards(pp, shards)
@@ -197,6 +229,8 @@ async def give_rewards(user, maps):
     await rewards.convert_shards()
     print(await rewards.get_shards())
     print(pp)
+    
+    print(rewards.shards["Common"].duplicates)
     
     return rewards
 

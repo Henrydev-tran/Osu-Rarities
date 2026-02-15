@@ -1,6 +1,7 @@
 from beatmap import *
 import aiofiles
 import json
+from item import Shard
 
 # Saves an object to a json path
 async def save_to_json(path, obj):
@@ -64,11 +65,19 @@ async def User_To_Dict(user):
     
     for i in user.maps:
         maps.append(await UBMO_To_Dict(i))
+        
+    items = {}
+        
+    for key1, val1 in user.items.items():
+        if key1 == "Shards":
+            for key2, val2 in val1.items():
+                items.setdefault("Shards", {})
+                items["Shards"][key2] = await Item_To_Dict(val2)
     
     result = {
         "id": user.id,
         "maps": maps,
-        "items": user.items,
+        "items": items,
         "pp": user.pp,
         "rolls_amount": user.rolls_amount,
         "rank": user.rank,
@@ -105,6 +114,38 @@ async def UBMO_To_Dict(ubmo):
     }
     
     return result
+
+async def Item_To_Dict(item):
+    if item.type == "Shard":
+        result = {
+            "rarity": item.rarity,
+            "cost": item.cost,
+            "value": item.value,
+            "name": item.name,
+            "function": item.function,
+            "id": item.id,
+            "description": item.description,
+            "duplicates": item.duplicates,
+            "type": item.type,
+            "shardrarity": item.shardrarity
+        }
+        
+        return result
+    
+async def Dict_To_Item(item):
+    if item["type"] == "Shard":
+        result = Shard(item["rarity"], 
+                       item["cost"], 
+                       item["name"], 
+                       item["value"], 
+                       item["function"], 
+                       item["id"], 
+                       item["description"], 
+                       item["duplicates"], 
+                       item["type"], 
+                       item["shardrarity"])
+        
+        return result
 
 # There's definitely better ways to do this but cut me some slack
 def UBMO_To_Dict_nonsync(ubmo):
