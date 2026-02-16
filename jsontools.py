@@ -81,7 +81,8 @@ async def User_To_Dict(user):
         "pp": user.pp,
         "rolls_amount": user.rolls_amount,
         "rank": user.rank,
-        "roll_max": user.roll_max
+        "roll_max": user.roll_max,
+        "luck_mult": user.luck_mult
     }
     
     return result

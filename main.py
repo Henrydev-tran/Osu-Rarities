@@ -810,7 +810,7 @@ async def load_diffs_sorted(ctx):
     await ctx.message.reply("You do not have the permission to use this command.")  
     
 # Acumulate all ranges in file (dev only). Step 2
-@client.command("load_cumulative_diffs")
+"""@client.command("load_cumulative_diffs")
 async def load_nmz_diffs(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         await add_cumulative_diffs_to_sorted_file()
@@ -831,7 +831,7 @@ async def calc_ranges(ctx):
         
         return  
     
-    await ctx.message.reply("You do not have the permission to use this command.") 
+    await ctx.message.reply("You do not have the permission to use this command.") """
     
 @client.command("getmap")
 async def getmap(ctx, id, bmid, amount=1):
@@ -871,13 +871,28 @@ async def getmap(ctx, id, bmid, amount=1):
     
     await ctx.message.reply("You do not have the permission to use this command.") 
     
+@client.command("setluck")
+async def setluck(ctx, luck):
+    if int(luck) > 999_999_999_999:
+        await ctx.message.reply("Luck multiplier demanded is too high, max is 999,999,999,999 (999 billion)")
+        
+        return
+    
+    userdata = await login(ctx.author.id)
+    userdata.luck_mult = int(luck)
+    
+    await update_user(userdata)
+    await ctx.message.reply(f"Set luck to {luck}x.")
+    
 # Roll a beatmap
 @client.command("roll")
 async def roll_random(ctx):
     if not rolling_disabled:
         userdata = await login(ctx.author.id)
+        luck_mult = userdata.luck_mult
+        print(luck_mult)
         
-        result = await get_random_map()
+        result = await get_random_map(luck_mult)
         
         embed = discord.Embed(title=f"You rolled {result["title"]}[{result["difficulty_name"]}]! (1 in {result["rarity"]})", description=f"Star Rating: {result["star_rating"]} ⭐", color=await get_star_color(result["star_rating"]), timestamp=datetime.datetime.now())
         embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{result["id"]}/covers/cover.jpg")

@@ -7,7 +7,7 @@ import copy
 
 # User class for...users obviously why do you even need this comment
 class User:
-    def __init__(self, id, maps=[], items={}, pp=0, rolls_amount=25, rank=0, roll_max=25):
+    def __init__(self, id, maps=[], items={}, pp=0, rolls_amount=25, rank=0, roll_max=25, luck_mult=1):
         self.id = id
         self.maps = maps
         self.items = items
@@ -15,6 +15,7 @@ class User:
         self.rolls_amount = rolls_amount
         self.rank = rank
         self.roll_max = roll_max
+        self.luck_mult = luck_mult
     
     async def add_map(self, map):
         for i in self.maps:
@@ -53,6 +54,9 @@ class User:
     async def change_rank(self, new_rank):
         self.rank = new_rank
         
+    async def change_luck_mult(self, new_mult):
+        self.luck_mult = new_mult
+        
 # Returns a User object from a given Dict
 async def Dict_To_User(data):
     maps = []
@@ -68,7 +72,7 @@ async def Dict_To_User(data):
                 items.setdefault("Shards", {})
                 items["Shards"][key2] = await Dict_To_Item(val2)
     
-    result = User(data["id"], maps, items, data["pp"], data["rolls_amount"], data["rank"], data["roll_max"])
+    result = User(data["id"], maps, items, data["pp"], data["rolls_amount"], data["rank"], data["roll_max"], data["luck_mult"])
     
     return result
 
