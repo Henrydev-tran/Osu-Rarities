@@ -83,7 +83,7 @@ star_colors = [
 # Returns a star color with a star rating
 async def get_star_color(value):
     if value >= 15:
-        return "#000000"
+        return 0x000000
     if value < 1:
         return star_colors[0]
     

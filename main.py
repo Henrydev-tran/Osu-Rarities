@@ -383,14 +383,12 @@ class SellingPaginator(discord.ui.View):
         
         if selectedmap in self.mapsinqueue:
             self.mapsinqueue.remove(selectedmap)
-            print(self.mapsinqueue)
             await self.checkmaps_updatebuttons()
             await interaction.response.edit_message(view=self)
             
             return
         
         self.mapsinqueue.append(selectedmap)
-        print(self.mapsinqueue)
         await self.checkmaps_updatebuttons()
         await interaction.response.edit_message(view=self)
     
@@ -405,14 +403,12 @@ class SellingPaginator(discord.ui.View):
         
         if selectedmap in self.mapsinqueue:
             self.mapsinqueue.remove(selectedmap)
-            print(self.mapsinqueue)
             await self.checkmaps_updatebuttons()
             await interaction.response.edit_message(view=self)
             
             return
         
         self.mapsinqueue.append(selectedmap)
-        print(self.mapsinqueue)
         await self.checkmaps_updatebuttons()
         await interaction.response.edit_message(view=self)
         
@@ -427,14 +423,12 @@ class SellingPaginator(discord.ui.View):
         
         if selectedmap in self.mapsinqueue:
             self.mapsinqueue.remove(selectedmap)
-            print(self.mapsinqueue)
             await self.checkmaps_updatebuttons()
             await interaction.response.edit_message(view=self)
             
             return
         
         self.mapsinqueue.append(selectedmap)
-        print(self.mapsinqueue)
         await self.checkmaps_updatebuttons()
         await interaction.response.edit_message(view=self)
         
@@ -449,14 +443,12 @@ class SellingPaginator(discord.ui.View):
         
         if selectedmap in self.mapsinqueue:
             self.mapsinqueue.remove(selectedmap)
-            print(self.mapsinqueue)
             await self.checkmaps_updatebuttons()
             await interaction.response.edit_message(view=self)
             
             return
         
         self.mapsinqueue.append(selectedmap)
-        print(self.mapsinqueue)
         await self.checkmaps_updatebuttons()
         await interaction.response.edit_message(view=self)
         
@@ -471,14 +463,12 @@ class SellingPaginator(discord.ui.View):
         
         if selectedmap in self.mapsinqueue:
             self.mapsinqueue.remove(selectedmap)
-            print(self.mapsinqueue)
             await self.checkmaps_updatebuttons()
             await interaction.response.edit_message(view=self)
             
             return
         
         self.mapsinqueue.append(selectedmap)
-        print(self.mapsinqueue)
         await self.checkmaps_updatebuttons()
         await interaction.response.edit_message(view=self)
         
@@ -499,10 +489,11 @@ class SellingPaginator(discord.ui.View):
             
     @discord.ui.button(label="All", style=discord.ButtonStyle.danger)
     async def all(self, interaction: discord.Interaction, button: discord.ui.Button):
-        for i in self.pages[self.index]:
-            if i in self.mapsinqueue:
-                self.mapsinqueue.remove(i)
-            self.mapsinqueue.append(i)
+        for i in range(len(self.pages[self.index])):
+            selectedmap = self.pages[self.index][i]["difficulties"][0]
+            if selectedmap in self.mapsinqueue:
+                self.mapsinqueue.remove(selectedmap)
+            self.mapsinqueue.append(selectedmap)
             
         await self.checkmaps_updatebuttons()
         
@@ -510,45 +501,29 @@ class SellingPaginator(discord.ui.View):
     
     @discord.ui.button(label="Sell", style=discord.ButtonStyle.success)
     async def sell(self, interaction: discord.Interaction, button: discord.ui.Button):
-        print(self.user.maps)
-        ids_to_remove = {d["id"] for d in self.mapsinqueue}
+        await interaction.message.reply("Calculating rewards...")
         
-        print(ids_to_remove)
+        ids_to_remove = {d["id"] for d in self.mapsinqueue}
 
         removed_difficulties = []
         kept_maps = []
 
         for m in self.user.maps:
-            new_diffs = []
+            kept_diffs = []
+
             for diff in m.difficulties:
                 if diff.id in ids_to_remove:
                     removed_difficulties.append(diff)
                 else:
-                    new_diffs.append(diff)
+                    kept_diffs.append(diff)
 
-            m.difficulties = new_diffs
-
-            # keep the map only if it still has difficulties
-            if m.difficulties:
+            if kept_diffs:
+                m.difficulties = kept_diffs
                 kept_maps.append(m)
-                
-        expanded_removed_difficulties = []
-
-        for diff in removed_difficulties:
-            expanded_removed_difficulties.append(diff)
-
-            if diff.duplicates > 1:
-                for _ in range(diff.duplicates):
-                    expanded_removed_difficulties.append(copy.deepcopy(diff))
 
         self.user.maps = kept_maps
-
-        print(self.user.maps)
-        print(removed_difficulties)
-        print("expanded removed")
-        print(expanded_removed_difficulties)
         
-        rewards = await give_rewards(expanded_removed_difficulties)
+        rewards = await give_rewards(removed_difficulties)
         
         mapssold = 0
         
@@ -562,15 +537,10 @@ class SellingPaginator(discord.ui.View):
             + "\n".join(f"{k}: {v.duplicates}" for k, v in rewards.shards.items())
         )
         
-        print("shard dupes")
-        print(rewards.shards["Common"].duplicates)
-        
         for y in rewards.shards.values():
             await self.user.add_item(y, "Shard")
             
         await self.user.change_pp(rewards.pp)
-            
-        print(self.user.items)
         
         await interaction.message.reply(message)
         
@@ -760,7 +730,7 @@ async def items(ctx):
         await ctx.message.reply("You have no items.")
         return
 
-    view = ItemPaginator(raw_items, username, per_page=8)
+    view = ItemPaginator(raw_items, username, per_page=5)
     await ctx.send(embed=view.make_embed(), view=view)
 
 
@@ -860,6 +830,44 @@ async def calc_ranges(ctx):
         await ctx.message.reply("Done.")
         
         return  
+    
+    await ctx.message.reply("You do not have the permission to use this command.") 
+    
+@client.command("getmap")
+async def getmap(ctx, id, bmid, amount=1):
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268 or ctx.author.id == 970958596424761366:
+        userdata = await login(ctx.author.id)
+        res = await load_beatmapset(id)
+        
+        result = None
+        
+        for i in res["difficulties"]:
+            if i["id"] == int(bmid):
+                result = i
+        
+        embed = discord.Embed(title=f"You rolled {result["title"]}[{result["difficulty_name"]}]! (1 in {result["rarity"]})", description=f"Star Rating: {result["star_rating"]} ⭐", color=await get_star_color(result["star_rating"]), timestamp=datetime.datetime.now())
+        embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{res["id"]}/covers/cover.jpg")
+        embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{res["id"]}l.jpg")
+        
+        map_result = await Dict_to_BeatmapDiff(result)
+        ubmd = User_BMD_Object(map_result.sr, map_result.parent_id, map_result.id, map_result.title, map_result.artist, map_result.difficulty_name, amount)
+        
+        parent = await find_ubmo(map_result.parent_id)
+        
+        embed.add_field(name="Artist", value=parent.artist)
+        embed.add_field(name="Mapper", value=parent.mapper)
+        embed.add_field(name="BeatmapsetID", value=parent.id)
+        embed.add_field(name="BeatmapID", value=result["id"])
+        embed.add_field(name="Status", value=await get_status(parent.status))
+        embed.add_field(name="Duplicates", value=amount)
+        
+        await userdata.add_map(ubmd)
+        
+        await update_user(userdata)
+        
+        await ctx.message.reply(embed=embed)
+        
+        return
     
     await ctx.message.reply("You do not have the permission to use this command.") 
     

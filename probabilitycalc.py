@@ -137,7 +137,7 @@ async def get_random_index():
 async def get_random_map():
     global maps
     
-    random_index = 5000
+    random_index = await get_random_index()
     
     maps_obj = maps
     

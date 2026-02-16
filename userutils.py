@@ -152,7 +152,7 @@ SR_TABLE = {
         "rolls": [(3, 0.30), (4, 0.50), (5, 0.20)]
     },
     (8, 9): {
-        "guaranteed": None,  # epic/mythic 50/50
+        "guaranteed": None,  # epic / mythic 50/50
         "rolls": [(3, 0.10), (4, 0.40), (5, 0.40), (6, 0.10)]
     },
     (9, 10): {
@@ -167,28 +167,46 @@ SR_TABLE = {
         "guaranteed": 7,
         "rolls": [(6, 0.10), (7, 0.70), (8, 0.20)]
     },
-    (12, 14): {
-        "guaranteed": None,  # chromatic/ultra 50/50
+    (12, 13): {
+        "guaranteed": None,  # chromatic / ultra 50/50
         "rolls": [(7, 0.50), (8, 0.50)]
+    },
+    (13, 14): {
+        "guaranteed": 8,
+        "rolls": [(8, 0.70), (8, 0.50), (7, 0.30)]
     }
 }
 
 async def get_shards(sr: float) -> list[int]:
-    sr = min(sr, 14)
-
     shards = []
 
+    if sr > 14:
+        shards.extend([8] * 5)  # 5 guaranteed ultra shards
+
+        roll = random.random()
+        if roll < 0.60:
+            shards.extend([8] * 2)
+        elif roll < 0.85:
+            shards.extend([8] * 4)
+        else:
+            shards.extend([8] * 6)
+
+        return shards
+
+    # normal SR handling
     for (low, high), data in SR_TABLE.items():
         if low <= sr < high:
 
+            # guaranteed shard
             if data["guaranteed"] is None:
                 if (low, high) == (8, 9):
-                    shards.append(random.choice([4, 5])) 
-                elif (low, high) == (12, 14):
-                    shards.append(random.choice([7, 8]))  
+                    shards.append(random.choice([4, 5]))
+                elif (low, high) == (12, 13):
+                    shards.append(random.choice([7, 8]))
             else:
                 shards.append(data["guaranteed"])
 
+            # independent rolls
             for shard_id, chance in data["rolls"]:
                 if random.random() < chance:
                     shards.append(shard_id)
@@ -197,40 +215,26 @@ async def get_shards(sr: float) -> list[int]:
 
     raise ValueError("SR out of supported range")
 
-
 async def give_rewards(maps):
     shards = []
     pp = 0
     
-    print("maps to gr")
-    print(maps)
-    
     for i in maps:
-        shardresult = await get_shards(i.sr)
-        
-        print("shards")
-        print(shards)
-        
-        shards.extend(shardresult)
-        
-        print("shardresult")
-        print(shardresult)
-        
-        ppresult = 0
-        if i.sr > 15:
-            ppresult = await calculatepp(15)
-        else:
-            ppresult = await calculatepp(i.sr)
-        pp += ppresult
+        for y in range(i.duplicates):
+            shardresult = await get_shards(i.sr)
+            
+            shards.extend(shardresult)
+            
+            ppresult = 0
+            if i.sr > 15:
+                ppresult = await calculatepp(15)
+            else:
+                ppresult = await calculatepp(i.sr)
+            pp += ppresult
         
     rewards = SellRewards(pp, shards)
-        
-    print(shards)
-    await rewards.convert_shards()
-    print(await rewards.get_shards())
-    print(pp)
     
-    print(rewards.shards["Common"].duplicates)
+    await rewards.convert_shards()
     
     return rewards
 
