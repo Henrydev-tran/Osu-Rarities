@@ -17,6 +17,7 @@ from jsontools import Beatmap_To_Json
 from loadmaps import *
 from probabilitycalc import *
 from math import ceil
+from userutils import xp_to_next_level
 
 import datetime
 
@@ -56,6 +57,16 @@ def get_star_emoji(star_rating: float) -> str:
 # Split a list into chunks of given size
 def chunk_list(lst, size):
     return [lst[i:i + size] for i in range(0, len(lst), size)]
+
+def format_number(n: int) -> str:
+    return format(n, ",")
+
+# Return an xp bar using emojis
+async def xp_bar(current_xp, xp_needed, length=10):
+    progress = current_xp / xp_needed
+    filled = int(progress * length)
+
+    return "🟩" * filled + "⬛" * (length - filled)
 
 # Class displays maps in a paging system and sorting
 class MapPaginator(discord.ui.View):
@@ -98,7 +109,7 @@ class MapPaginator(discord.ui.View):
         for m in self.pages[self.index]:
             difficulties = "\n".join(
                 f"{get_star_emoji(d['star_rating'])} "
-                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity 1 in {d['rarity']}) -- ID: {d['id']} -- # {d["duplicates"]}"
+                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity 1 in {format_number(d['rarity'])}) -- ID: {d['id']} -- # {d["duplicates"]}"
                 for d in m["difficulties"]
             )
 
@@ -238,10 +249,10 @@ class ItemPaginator(discord.ui.View):
 
         for item in self.pages[self.index]:
             embed.add_field(
-                name=f"🔹 {item.name} ×{item.duplicates}",
+                name=f"🔹 {item.name} ×{format_number(item.duplicates)}",
                 value=(
                     f"**Shard Rarity:** {item.shardrarity}\n"
-                    f"**Value:** {item.value} PP\n"
+                    f"**Value:** {format_number(item.value)} PP\n"
                     f"{item.function}\n"
                     f"{item.description}"
                 ),
@@ -322,7 +333,7 @@ class SellingPaginator(discord.ui.View):
         for m in self.pages[self.index]:
             difficulties = "\n".join(
                 f"{get_star_emoji(d['star_rating'])} "
-                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity 1 in {d['rarity']}) -- ID: {d['id']} -- # {d["duplicates"]}"
+                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity 1 in {format_number(d['rarity'])}) -- ID: {d['id']} -- # {d["duplicates"]}"
                 for d in m["difficulties"]
             )
 
@@ -530,11 +541,11 @@ class SellingPaginator(discord.ui.View):
         for i in removed_difficulties:
             mapssold += i.duplicates
         
-        await interaction.message.reply(f"{mapssold} map(s) sold.")
+        await interaction.message.reply(f"{format_number(mapssold)} map(s) sold.")
         
         message = (
-            f"{rewards.pp} PP gained. \n"
-            + "\n".join(f"{k}: {v.duplicates}" for k, v in rewards.shards.items())
+            f"{format_number(rewards.pp)} PP gained. \n"
+            + "\n".join(f"{k}: {format_number(v.duplicates)}" for k, v in rewards.shards.items())
         )
         
         for y in rewards.shards.values():
@@ -589,7 +600,7 @@ async def ping(ctx):
 async def calcrare(ctx, sr):
     await login(ctx.author.id)
     
-    await ctx.message.reply(f"The given star rating of {sr} has a rarity of 1 in {round(Calculate_Rarity(sr))}")
+    await ctx.message.reply(f"The given star rating of {sr} has a rarity of 1 in {format_number(round(Calculate_Rarity(sr)))}")
 
 # Load the beatmapset of a given ID and outputs it
 @client.command("load_beatmapset")
@@ -718,7 +729,7 @@ async def sellmaps(ctx, id = None):
 async def balance(ctx):
     userdata = await login(ctx.author.id)
     
-    await ctx.message.reply(f"You currently have {userdata.pp} PP.")
+    await ctx.message.reply(f"You currently have {format_number(userdata.pp)} PP.")
     
 @client.command("items")
 async def items(ctx):
@@ -845,7 +856,7 @@ async def getmap(ctx, id, bmid, amount=1):
             if i["id"] == int(bmid):
                 result = i
         
-        embed = discord.Embed(title=f"You rolled {result["title"]}[{result["difficulty_name"]}]! (1 in {result["rarity"]})", description=f"Star Rating: {result["star_rating"]} ⭐", color=await get_star_color(result["star_rating"]), timestamp=datetime.datetime.now())
+        embed = discord.Embed(title=f"You rolled {result["title"]}[{result["difficulty_name"]}]! (1 in {format_number(result["rarity"])})", description=f"Star Rating: {result["star_rating"]} ⭐", color=await get_star_color(result["star_rating"]), timestamp=datetime.datetime.now())
         embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{res["id"]}/covers/cover.jpg")
         embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{res["id"]}l.jpg")
         
@@ -882,7 +893,7 @@ async def setluck(ctx, luck):
     userdata.luck_mult = int(luck)
     
     await update_user(userdata)
-    await ctx.message.reply(f"Set luck to {luck}x.")
+    await ctx.message.reply(f"Set luck to {format_number(luck)}x.")
     
 # Roll a beatmap
 @client.command("roll")
@@ -894,7 +905,7 @@ async def roll_random(ctx):
         
         result = await get_random_map(luck_mult)
         
-        embed = discord.Embed(title=f"You rolled {result["title"]}[{result["difficulty_name"]}]! (1 in {result["rarity"]})", description=f"Star Rating: {result["star_rating"]} ⭐", color=await get_star_color(result["star_rating"]), timestamp=datetime.datetime.now())
+        embed = discord.Embed(title=f"You rolled {result["title"]}[{result["difficulty_name"]}]! (1 in {format_number(result["rarity"])})", description=f"Star Rating: {result["star_rating"]} ⭐", color=await get_star_color(result["star_rating"]), timestamp=datetime.datetime.now())
         embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{result["id"]}/covers/cover.jpg")
         embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{result["id"]}l.jpg")
         
@@ -909,15 +920,40 @@ async def roll_random(ctx):
         embed.add_field(name="BeatmapID", value=result["id"])
         embed.add_field(name="Status", value=await get_status(parent.status))
         
+        old_level = userdata.level
+        level_up = await userdata.add_xp(result["rarity"])
+        
         await userdata.add_map(ubmd)
         
         await update_user(userdata)
         
         await ctx.message.reply(embed=embed)
         
+        xp_needed = xp_to_next_level(userdata.level)
+        bar = await xp_bar(userdata.xp, xp_needed)
+        
+        if level_up:
+            await ctx.message.reply((
+                f"You leveled up! Level {format_number(old_level)} -> {format_number(userdata.level)}\n"
+                f"Level {format_number(userdata.level)} - {bar} - {format_number(userdata.level+1)}\n"
+                f"{format_number(userdata.xp)}/{format_number(xp_needed)} XP"
+            ))
+        
         return
         
     await ctx.message.reply("Rolling had been temporarily disabled by the developer.")
+    
+@client.command("level")
+async def level(ctx):
+    userdata = await login(ctx.author.id)
+    
+    xp_needed = xp_to_next_level(userdata.level)
+    bar = await xp_bar(userdata.xp, xp_needed)
+        
+    await ctx.message.reply((
+        f"Level {format_number(userdata.level)} - {bar} - {format_number(userdata.level+1)}\n"
+        f"{format_number(userdata.xp)}/{format_number(xp_needed)} XP"
+    ))
     
 @client.command("clear_userdata")
 async def clear_userdata_cmd(ctx, id):
@@ -936,8 +972,8 @@ async def clear_all_userdata_cmd(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         json_object = await return_json("json/users.json")
         
-        await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} users gets cleared")
-        print(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} users gets cleared")
+        await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {format_number(len(json_object))} users gets cleared")
+        print(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {format_number(len(json_object))} users gets cleared")
         
         await asyncio.sleep(20)
         
@@ -955,8 +991,8 @@ async def clear_maps_cmd(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         json_object = await return_json("json/maps.json")
         
-        await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} maps gets cleared")
-        print(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} maps gets cleared")
+        await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {format_number(len(json_object))} maps gets cleared")
+        print(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {format_number(len(json_object))} maps gets cleared")
         
         await asyncio.sleep(20)
         
@@ -978,8 +1014,8 @@ async def clear_sorted_diffs_cmd(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
         json_object = await return_json("json/sorteddiffs.json")
         
-        await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} difficulties gets cleared")
-        print(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {len(json_object)} difficulties gets cleared")
+        await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {format_number(len(json_object))} difficulties gets cleared")
+        print(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {format_number(len(json_object))} difficulties gets cleared")
         
         await asyncio.sleep(20)
         
@@ -1061,7 +1097,7 @@ async def lookup(ctx, beatmapid):
     
     difficulties = "\n".join(
         f"{get_star_emoji(d.sr)} "
-        f"- {d.difficulty_name} ⭐ {d.sr} (rarity 1 in {d.rarity}) -- ID: {d.id} -- Owned: {owned[map.difficulties.index(d)]}"
+        f"- {d.difficulty_name} ⭐ {d.sr} (rarity 1 in {format_number(d.rarity)}) -- ID: {d.id} -- Owned: {owned[map.difficulties.index(d)]}"
         for d in map.difficulties
     )
 
@@ -1140,7 +1176,7 @@ async def recalculate_rarities(ctx):
 async def test_embed(ctx):
     await login(ctx.author.id)
     
-    embed = discord.Embed(title="You rolled Parallel Universe Shifter[Quantum Field Disruption]! (1 in 126900)", description="Star Rating: 8.54 ⭐", color=0x0362fc)
+    embed = discord.Embed(title="You rolled Parallel Universe Shifter[Quantum Field Disruption]! (1 in 126,900)", description="Star Rating: 8.54 ⭐", color=0x0362fc)
     embed.add_field(name="Field1", value="test embed", inline=False)
     embed.add_field(name="Field2", value="Open the gates to the parallel universes.", inline=False)
     embed.add_field(name="lmao", value="test embed", inline=False)

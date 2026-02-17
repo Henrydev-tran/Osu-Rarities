@@ -22,9 +22,10 @@ class Mapper(Item):
         self.buffamount = buffamount
 
 class Gear(Item):
-    def __init__(self, rarity, cost, name, value, function, id, description, duplicates, type, luckincrease):
+    def __init__(self, rarity, cost, name, value, function, id, description, duplicates, type, luckincrease, luckmultiplier):
         super().__init__(rarity, cost, name, value, function, id, description, duplicates, type)
         self.luckincrease = luckincrease
+        self.luckmultiplier = luckmultiplier
         
 SHARDS = {
     "Common": Shard(
