@@ -2,6 +2,10 @@ from beatmap import *
 import aiofiles
 import json
 from item import Shard
+import asyncio
+import orjson
+import pickle
+import os
 
 # Saves an object to a json path
 async def save_to_json(path, obj):
@@ -9,11 +13,25 @@ async def save_to_json(path, obj):
         data = json.dumps(obj)   
         await file.write(data)
         
+def build_maps(maps_json):
+    return {
+        k: Dict_to_Beatmap(v)
+        for k, v in maps_json.items()
+    }
+        
 # Returns an object from a json path
 async def return_json(path):
-    async with aiofiles.open(path, "r") as file:
-        contents = await file.read()
-        return json.loads(contents)
+    cache = path + ".pkl"
+
+    if os.path.exists(cache):
+        return await asyncio.to_thread(pickle.load, open(cache, "rb"))
+
+    async with aiofiles.open(path, "rb") as f:
+        raw = await f.read()
+
+    data = await asyncio.to_thread(orjson.loads, raw)
+    await asyncio.to_thread(pickle.dump, data, open(cache, "wb"))
+    return data
     
 # MapPool object that stores all the maps in json and Beatmap form
 class MapPool:
@@ -23,9 +41,9 @@ class MapPool:
         
     async def load_from(self, file):
         self.maps_json = await return_json(file)
-        
-        for i in self.maps_json:
-            self.maps[i] = await Dict_to_Beatmap(self.maps_json[i])
+
+        # build all Beatmap objects off the event loop
+        self.maps = await asyncio.to_thread(build_maps, self.maps_json)
             
     async def clear_all(self):
         self.maps = {}
@@ -210,12 +228,18 @@ async def BeatmapDiffCumulative_To_Dict(beatmap):
     return result
 
 # Returns a Beatmap object with a given dict
-async def Dict_to_Beatmap(dict_data):
-    diffs = []
-    
-    for i in dict_data["difficulties"]:        
-        difficulty = Beatmap_Difficulty(i["star_rating"], i["parent_id"], i["id"], i["title"], i["artist"], i["difficulty_name"])
-        diffs.append(difficulty)
+def Dict_to_Beatmap(dict_data):
+    diffs = [
+        Beatmap_Difficulty(
+            i["star_rating"],
+            i["parent_id"],
+            i["id"],
+            i["title"],
+            i["artist"],
+            i["difficulty_name"],
+        )
+        for i in dict_data["difficulties"]
+    ]
         
     return Beatmap(dict_data["id"], dict_data["title"], dict_data["artist"], diffs, dict_data["mapper"], dict_data["status"])
 

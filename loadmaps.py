@@ -4,6 +4,7 @@ from beatmap import Beatmap, Beatmap_Difficulty, User_BM_Object
 from jsontools import *
 import aiofiles
 import asyncio
+import time
 
 from dotenv import load_dotenv
 
@@ -180,3 +181,7 @@ async def loadALL():
             await set_query_year(await get_year())
             
 # asyncio.run(loadALL())
+
+start = time.perf_counter()
+asyncio.run(load_gmaps_variable())
+print(f"Loaded maps in {time.perf_counter() - start:.3f}s")

@@ -3,3 +3,5 @@ async-timeout>=5.0.1
 asyncio>=3.4.3
 osu.py[async]>=3.2.1
 aiofiles>=24.1.0
+python-dotenv>=1.2.1
+orjson>=3.11.7
