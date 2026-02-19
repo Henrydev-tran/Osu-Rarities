@@ -19,6 +19,8 @@ from probabilitycalc import *
 from math import ceil
 from userutils import xp_to_next_level
 
+from item import SHARDS_BY_ID, SHARD_CORE_RECIPES, ALL_RECIPES
+
 import datetime
 
 client = commands.Bot(command_prefix='o!', intents=discord.Intents(messages=True, guilds=True, message_content=True))
@@ -70,10 +72,11 @@ async def xp_bar(current_xp, xp_needed, length=10):
 
 # Class displays maps in a paging system and sorting
 class MapPaginator(discord.ui.View):
-    def __init__(self, maps, username, per_page=6):
+    def __init__(self, maps, username, author: discord.User, per_page=6):
         super().__init__(timeout=120)
         self.original_maps = maps  # keep a reference to the unsorted maps
         self.maps = maps[:]        # working copy (can be sorted)
+        self.author_id = author.id
         self.pages = chunk_list(self.maps, per_page) 
         self.index = 0
         self.username = username
@@ -133,6 +136,15 @@ class MapPaginator(discord.ui.View):
         if self.index < len(self.pages) - 1:
             self.index += 1
             await interaction.response.edit_message(embed=self.make_embed(), view=self)
+            
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "❌ This crafting menu isn’t yours.",
+                ephemeral=True
+            )
+            return False
+        return True
 
     class SortDropdown(discord.ui.Select):
         def __init__(self, paginator):
@@ -195,6 +207,283 @@ class ItemCategorySelect(discord.ui.Select):
             view=self.paginator
         )
             
+class CraftRecipeSelect(discord.ui.Select):
+    def __init__(self, recipes, selected_recipe_id: str | None):
+        options = []
+
+        for recipe in recipes:
+            options.append(
+                discord.SelectOption(
+                    label=recipe.name,
+                    description=recipe.description[:50],
+                    value=recipe.id,
+                    default=(recipe.id == selected_recipe_id)  # ⭐ key line
+                )
+            )
+
+        super().__init__(
+            placeholder="Select recipe",
+            options=options
+        )
+
+    async def callback(self, interaction):
+        view: CraftingView = self.view
+        view.selected_recipe_id = self.values[0]
+        view.craft_amount = 1  # reset amount on change
+
+        view.refresh_components()
+
+        await interaction.response.edit_message(
+            embed=view.make_embed(),
+            view=view
+        )
+  
+class CraftCategorySelect(discord.ui.Select):
+    def __init__(self, current_category: str):
+        options = []
+
+        for label, value in [
+            ("Shard Cores", "ShardCores")
+        ]:
+            options.append(
+                discord.SelectOption(
+                    label=label,
+                    value=value,
+                    default=(value == current_category)
+                )
+            )
+
+        super().__init__(
+            placeholder="Select crafting category",
+            options=options
+        )
+
+    async def callback(self, interaction):
+        view: CraftingView = self.view
+        view.set_category(self.values[0])
+
+        await interaction.response.edit_message(
+            embed=view.make_embed(),
+            view=view
+        )         
+            
+class CraftingView(discord.ui.View):
+    def __init__(self, user, author: discord.User):
+        super().__init__(timeout=120)
+        self.user = user
+        self.author_id = author.id
+        self.category = "ShardCores"
+        self.craft_amount = 1
+        self.selected_recipe_id = None
+
+        self.refresh_components()  
+        
+    def set_category(self, category: str):
+        self.category = category
+        self.selected_recipe_id = None
+        self.craft_amount = 1
+        self.refresh_components()
+        
+    def refresh_components(self):
+        self.clear_items()
+
+        # category dropdown
+        self.add_item(CraftCategorySelect(self.category))
+
+        # recipe dropdown (depends on category)
+        recipes = ALL_RECIPES.get(self.category, [])
+        if recipes:
+            self.add_item(
+                CraftRecipeSelect(
+                    recipes,
+                    self.selected_recipe_id
+                )
+            )
+
+        # buttons
+        self.add_item(self.decrease)
+        self.add_item(self.increase)
+        self.add_item(self.craft)
+        self.add_item(self.craft_max)
+            
+    def get_recipes_for_category(self):
+        return [
+            r for r in ALL_RECIPES[self.category]
+            if r.can_craft(self.user)
+        ]
+        
+    def get_selected_recipe(self):
+        if self.selected_recipe_id is None:
+            return None
+
+        for recipe in ALL_RECIPES[self.category]:
+            if recipe.id == self.selected_recipe_id:
+                return recipe
+
+        return None
+        
+    def make_embed(self):
+        recipe = self.get_selected_recipe()
+
+        embed = discord.Embed(
+            title="🛠 Shard Core Crafting",
+            color=discord.Color.gold()
+        )
+        
+        if recipe is None:
+            embed.description = "Select a crafting category and recipe from the dropdowns below."
+
+            embed.add_field(
+                name="How crafting works",
+                value=(
+                    "• Choose a category\n"
+                    "• Select a recipe\n"
+                    "• Adjust amount\n"
+                    "• Craft!"
+                ),
+                inline=False
+            )
+
+            embed.set_footer(text="Waiting for recipe selection")
+            return embed
+        
+        embed.description = recipe.description
+
+        embed.add_field(
+            name="Requirements",
+            value="\n".join(
+                f"🔹 {amt}× {SHARDS_BY_ID[item_id].name}"
+                for item_id, amt in recipe.requirements.items()
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Result",
+            value=f"✨ {recipe.result.name}",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="Amount",
+            value=f"×{self.craft_amount}",
+            inline=True
+        )
+
+        embed.add_field(
+            name="You Can Craft",
+            value=f"{recipe.max_craftable(self.user)} max",
+            inline=True
+        )
+
+        return embed      
+    
+    async def craft(self, interaction, amount: int):
+        recipe = self.get_selected_recipe()
+
+        if not recipe.can_craft(self.user, amount):
+            await interaction.response.send_message(
+                "Not enough materials.",
+                ephemeral=True
+            )
+            return
+
+        recipe.consume(self.user, amount)
+        recipe.give_result(self.user, amount)
+
+        await interaction.response.edit_message(
+            embed=self.make_embed(),
+            view=self
+        )   
+        
+    @discord.ui.button(label="➖", style=discord.ButtonStyle.secondary)
+    async def decrease(self, interaction, button):
+        if self.craft_amount > 1:
+            self.craft_amount -= 1
+
+        await interaction.response.edit_message(
+            embed=self.make_embed(),
+            view=self
+        )
+        
+    @discord.ui.button(label="➕", style=discord.ButtonStyle.secondary)
+    async def increase(self, interaction, button):
+        recipe = self.get_selected_recipe()
+        if not recipe:
+            return
+
+        max_amount = recipe.max_craftable(self.user)
+        if self.craft_amount < max_amount:
+            self.craft_amount += 1
+
+        await interaction.response.edit_message(
+            embed=self.make_embed(),
+            view=self
+        )
+        
+    @discord.ui.button(label="Craft", style=discord.ButtonStyle.success)
+    async def craft(self, interaction, button):
+        recipe = self.get_selected_recipe()
+        if not recipe:
+            return
+
+        if self.craft_amount > recipe.max_craftable(self.user):
+            return await interaction.response.send_message(
+                "Not enough materials.",
+                ephemeral=True
+            )
+
+        recipe.consume(self.user, self.craft_amount)
+        recipe.give_result(self.user, self.craft_amount)
+        
+        await interaction.message.reply(
+                f"Crafted {self.craft_amount}x {recipe.name}"
+            )
+
+        self.craft_amount = 1  # reset after craft
+        
+        await update_user(self.user)
+
+        await interaction.response.edit_message(
+            embed=self.make_embed(),
+            view=self
+        )
+        
+    @discord.ui.button(label="Craft Max", style=discord.ButtonStyle.primary)
+    async def craft_max(self, interaction, button):
+        recipe = self.get_selected_recipe()
+        if not recipe:
+            return
+
+        amount = recipe.max_craftable(self.user)
+        if amount == 0:
+            return
+        
+        recipe.consume(self.user, amount)
+        recipe.give_result(self.user, amount)
+        
+        await update_user(self.user)
+
+        self.craft_amount = 1
+
+        await interaction.response.edit_message(
+            embed=self.make_embed(),
+            view=self
+        )
+        
+        await interaction.message.reply(
+                f"Crafted {amount}x {recipe.name}"
+            )
+        
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "❌ This crafting menu isn’t yours.",
+                ephemeral=True
+            )
+            return False
+        return True
+            
 async def flatten_items(items_dict):
     """
     Turns:
@@ -222,10 +511,11 @@ def shard_rarity_index(rarity: str) -> int:
     return SHARD_RANK.get(rarity, 0)
 
 class ItemPaginator(discord.ui.View):
-    def __init__(self, user_items, username, per_page=8):
+    def __init__(self, user_items, username, author: discord.User, per_page=8):
         super().__init__(timeout=120)
         self.user_items = items
         self.username = username
+        self.author_id = author.id
         self.per_page = per_page
         self.index = 0
         self.current_category = "Shards"
@@ -248,16 +538,29 @@ class ItemPaginator(discord.ui.View):
             return embed
 
         for item in self.pages[self.index]:
-            embed.add_field(
-                name=f"🔹 {item.name} ×{format_number(item.duplicates)}",
-                value=(
-                    f"**Shard Rarity:** {item.shardrarity}\n"
-                    f"**Value:** {format_number(item.value)} PP\n"
-                    f"{item.function}\n"
-                    f"{item.description}"
-                ),
-                inline=False
-            )
+            if isinstance(item, Shard):
+                embed.add_field(
+                    name=f"🔹 {item.name} ×{item.duplicates}",
+                    value=(
+                        f"**Shard Rarity:** {item.shardrarity}\n"
+                        f"{item.function}\n"
+                        f"**Value:** {item.value}\n"
+                        f"**Effect:** {item.description}"
+                    ),
+                    inline=False
+                )
+
+            else:
+                embed.add_field(
+                    name=f"{item.name} ×{item.duplicates}",
+                    value=(
+                        f"**Rarity:** {item.rarity}\n"
+                        f"{item.function}\n"
+                        f"**Value:** {item.value}\n"
+                        f"**Description:** {item.description}"
+                    ),
+                    inline=False
+                )
 
         embed.set_footer(text=f"Page {self.index + 1}/{len(self.pages)}")
         return embed
@@ -273,14 +576,24 @@ class ItemPaginator(discord.ui.View):
         if self.index < len(self.pages) - 1:
             self.index += 1
             await interaction.response.edit_message(embed=self.make_embed(), view=self)
+            
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "❌ This crafting menu isn’t yours.",
+                ephemeral=True
+            )
+            return False
+        return True
 
 
 # Class displays maps in a paging system and sorting to sell
 class SellingPaginator(discord.ui.View):
-    def __init__(self, user, maps, username, per_page=5):
+    def __init__(self, user, maps, username, author: discord.User, per_page=5):
         super().__init__(timeout=120)
         self.original_maps = maps  # keep a reference to the unsorted maps  
         self.undividedmaps = []  
+        self.author_id = author.id
         def divide_maps(maps):
             result = []
             
@@ -310,6 +623,15 @@ class SellingPaginator(discord.ui.View):
         self.pages = chunk_list(self.maps, len(self.pages[0]))
         self.index = 0  # reset to first page
 
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "❌ This crafting menu isn’t yours.",
+                ephemeral=True
+            )
+            return False
+        return True
+    
     def make_embed(self):
         if len(self.pages) == 0:
             embed = discord.Embed(
@@ -549,7 +871,7 @@ class SellingPaginator(discord.ui.View):
         )
         
         for y in rewards.shards.values():
-            await self.user.add_item(y, "Shard")
+            self.user.add_item(y, "Shard")
             
         await self.user.change_pp(rewards.pp)
         
@@ -720,7 +1042,7 @@ async def sellmaps(ctx, id = None):
     
     maps = user_json["maps"]
     
-    view = SellingPaginator(userdata, maps, username, per_page=5)
+    view = SellingPaginator(userdata, maps, username, per_page=5, author=ctx.author)
     msg = await ctx.send(embed=view.make_embed(), view=view)
     
     active_views[userid] = (msg, view)
@@ -741,7 +1063,7 @@ async def items(ctx):
         await ctx.message.reply("You have no items.")
         return
 
-    view = ItemPaginator(raw_items, username, per_page=5)
+    view = ItemPaginator(raw_items, username, per_page=5, author=ctx.author)
     await ctx.send(embed=view.make_embed(), view=view)
 
 
@@ -893,7 +1215,7 @@ async def setluck(ctx, luck):
     userdata.luck_mult = int(luck)
     
     await update_user(userdata)
-    await ctx.message.reply(f"Set luck to {format_number(luck)}x.")
+    await ctx.message.reply(f"Set luck to {format_number(int(luck))}x.")
     
 # Roll a beatmap
 @client.command("roll")
@@ -1059,6 +1381,33 @@ mapsloaded - Check how many maps has been loaded into the database. example: o!m
 help - Shows this message.
 7 more dev-only commands.""")
     
+@client.command("craft")
+async def craft(ctx):
+    userdata = await login(ctx.author.id)
+    
+    if ctx.author.id in active_views:
+        msg, view = active_views.pop(ctx.author.id)
+
+        for child in view.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+
+        try:
+            await msg.edit(view=view)
+        except discord.NotFound:
+            pass
+        
+        await ctx.reply("Your previous menu was disabled.", mention_author=False)
+    
+    view = CraftingView(
+        user=userdata,
+        author=ctx.author
+    )
+
+    msg = await ctx.send(embed=view.make_embed(), view=view)
+    
+    active_views[ctx.author.id] = (msg, view)
+    
 @client.command("lookup")
 async def lookup(ctx, beatmapid):
     userdata = await login(ctx.author.id)
@@ -1111,7 +1460,23 @@ async def lookup(ctx, beatmapid):
     embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{map.id}l.jpg")
     
     await ctx.message.reply(embed=embed)
+
+@client.command("test1")
+async def t1(ctx, id, amount):
+    userdata = await login(ctx.author.id)
     
+    await userdata.remove_item_by_id(id, int(amount))
+    
+    await update_user(userdata)
+    
+    await ctx.message.reply("Done.")
+    
+@client.command("test2")
+async def t1(ctx, id):
+    userdata = await login(ctx.author.id)
+    
+    await ctx.message.reply(await userdata.count_item_by_id(id))
+        
 @client.command("inventory")
 async def inventory(ctx, id = None):
     userid = ctx.author.id
@@ -1148,7 +1513,7 @@ async def inventory(ctx, id = None):
     
     maps = user_json["maps"]
     
-    view = MapPaginator(maps, username, per_page=10)
+    view = MapPaginator(maps, username, per_page=10, author=ctx.author)
     msg = await ctx.send(embed=view.make_embed(), view=view)
     
     active_views[userid] = (msg, view)

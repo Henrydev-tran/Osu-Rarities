@@ -35,15 +35,60 @@ class User:
     async def add_mapper(self, mapper):
         self.mappers.append(mapper)
     
-    async def add_item(self, item, type):
+    def add_item(self, item, type):
         if type == "Shard":
             shards = self.items.setdefault("Shards", {})
             
             try:
                 shards[item.shardrarity].duplicates += item.duplicates
             except:
-                shards[item.shardrarity] = item                
+                shards[item.shardrarity] = item  
+                
+        if type == "ShardCore":
+            shardcores = self.items.setdefault("ShardCores", {})
+            
+            try:
+                shardcores[item.corerarity].duplicates += item.duplicates
+            except:
+                shardcores[item.corerarity] = item  
+                
+    def remove_item_by_id(self, id, amount):
+        obj = self.find_item_by_id(id)
+        
+        obj.duplicates -= amount
+        
+    def add_item_by_id(self, id, amount):
+        obj = self.find_item_by_id(id)
+        
+        obj.duplicates += amount
     
+    def count_item_by_id(self, id):
+        obj_dupes = 0
+        
+        print(id)
+        
+        for items in self.items.values():
+            obj_dupes = next(
+                (obj for obj in items.values() if obj.id == id),
+                0  # returned if not found
+            )
+            
+        if not obj_dupes == 0:
+            obj_dupes = obj_dupes.duplicates
+            
+        return obj_dupes
+    
+    def find_item_by_id(self, id):
+        obj = None
+        
+        for items in self.items.values():
+            obj = next(
+                (obj for obj in items.values() if obj.id == id),
+                None  # returned if not found
+            )
+            
+        return obj
+
     async def change_pp(self, amount):
         self.pp += amount
         

@@ -1,3 +1,5 @@
+import copy
+
 class Item:
     def __init__(self, rarity, cost, name, value, function, id, description, duplicates, type):
         self.rarity = rarity
@@ -15,6 +17,11 @@ class Shard(Item):
         super().__init__(rarity, cost, name, value, function, id, description, duplicates, type)
         self.shardrarity = shardrarity
         
+class ShardCore(Item):
+    def __init__(self, rarity, cost, name, value, function, id, description, duplicates, type, corerarity):
+        super().__init__(rarity, cost, name, value, function, id, description, duplicates, type)
+        self.corerarity = corerarity
+        
 class Mapper(Item):
     def __init__(self, rarity, cost, name, value, function, id, description, duplicates, mapperbuff, type, buffamount):
         super().__init__(rarity, cost, name, value, function, id, description, duplicates, type)
@@ -26,6 +33,35 @@ class Gear(Item):
         super().__init__(rarity, cost, name, value, function, id, description, duplicates, type)
         self.luckincrease = luckincrease
         self.luckmultiplier = luckmultiplier
+        
+class CraftingRecipe:
+    def __init__(self, id, name, result, requirements, description):
+        self.id = id
+        self.name = name
+        self.result = result            
+        self.requirements = requirements  
+        self.description = description
+        
+    def max_craftable(self, user) -> int:
+        """
+        Returns the maximum number of times this recipe can be crafted
+        based on user's inventory.
+        """
+        return min(
+            user.count_item_by_id(item_id) // amount
+            for item_id, amount in self.requirements.items()
+        )
+
+    def can_craft(self, user, amount: int = 1) -> bool:
+        return self.max_craftable(user) >= amount
+
+    def consume(self, user, amount: int):
+        for item_id, req_amount in self.requirements.items():
+            user.remove_item_by_id(item_id, req_amount * amount)
+
+    def give_result(self, user, amount: int):
+        self.result.duplicates = amount
+        user.add_item(self.result, self.result.type)
         
 SHARDS = {
     "Common": Shard(
@@ -125,3 +161,49 @@ SHARDS = {
         shardrarity="Ultra"
     ),
 } 
+
+SHARDS_BY_ID = {
+    shard.id: shard
+    for shard in SHARDS.values()
+}
+
+SHARD_CORES = {
+    rarity: ShardCore(
+        rarity=rarity,
+        cost=False,
+        value=SHARDS[rarity].value * 8,
+        name=f"{rarity} Shard Core",
+        function="Used for advanced crafting.",
+        id=f"CORE_{rarity.upper()}",
+        description=f"A condensed core made from {rarity.lower()} shards.",
+        duplicates=1,
+        type="ShardCore",
+        corerarity=rarity
+    )
+    for rarity in SHARDS
+}
+
+SHARD_CORE_RECIPES = []
+
+for rarity, shard in SHARDS.items():
+    recipe = CraftingRecipe(
+        id=f"CRAFT_CORE_{rarity.upper()}",
+        name=f"{rarity} Shard Core",
+        result=SHARD_CORES[rarity],
+        requirements={
+            shard.id: 10
+        },
+        description=f"Combine 10 {rarity} shards into a {rarity} shard core."
+    )
+
+    SHARD_CORE_RECIPES.append(recipe)
+    
+ALL_RECIPES = {
+    "ShardCores": SHARD_CORE_RECIPES
+}
+
+RECIPES_BY_ID = {
+    recipe.id: recipe
+    for recipes in ALL_RECIPES.values()
+    for recipe in recipes
+}
