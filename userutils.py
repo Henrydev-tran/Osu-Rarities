@@ -2,7 +2,7 @@ from loadmaps import find_ubmo, return_json, save_to_json, User_To_Dict, Beatmap
 from jsontools import Dict_To_UBMO, UBMO_To_Dict, Dict_To_Item
 import random
 from raritycalculation import calculatepp
-from item import SHARDS
+from item import SHARDS, STARESSENCE
 import copy
 
 # User class for...users obviously why do you even need this comment
@@ -51,6 +51,14 @@ class User:
                 shardcores[item.corerarity].duplicates += item.duplicates
             except:
                 shardcores[item.corerarity] = item  
+                
+        if type == "Special":
+            specialitem = self.items.setdefault("Special", {})
+            
+            try:
+                specialitem[item.id].duplicates += item.duplicates
+            except:    
+                specialitem[item.id] = item
                 
     def remove_item_by_id(self, id, amount):
         obj = self.find_item_by_id(id)
@@ -128,10 +136,10 @@ async def Dict_To_User(data):
     items = {}
     
     for key1, val1 in data["items"].items():
-        if key1 == "Shards":
-            for key2, val2 in val1.items():
-                items.setdefault("Shards", {})
-                items["Shards"][key2] = await Dict_To_Item(val2)
+        for key2, val2 in val1.items():
+            items.setdefault(key1, {})
+            items[key1][key2] = await Dict_To_Item(val2)   
+        
     
     result = User(data["id"], maps, items, data["pp"], data["rolls_amount"], data["rank"], data["roll_max"], data["luck_mult"], data["xp"], data["level"])
     
@@ -151,12 +159,30 @@ SHARD_LIST = [
 
 SHARD_RANK = {rarity: i for i, rarity in enumerate(SHARD_LIST)}
 
+def star_essence_chance(sr):
+    return min(100, 5 * 20 ** ((sr - 1) / 6)) / 100
+
+def get_star_essence(maps):
+    result = None
+    
+    for i in maps:
+        for _ in range(i.duplicates):
+            if random.random() < star_essence_chance(i.sr):
+                if result == None:
+                    result = copy.deepcopy(STARESSENCE)
+                else:
+                    result.duplicates += 1
+    
+    return result
+                
+
 class SellRewards:
-    def __init__(self, pp, shards):
+    def __init__(self, pp, shards, staresc):
         self.pp = pp
         self.baseshards = shards
         self.oldshards = []
         self.shards = {}
+        self.staresc = staresc
     
     async def convert_shards(self):
         for i in self.baseshards:
@@ -166,6 +192,9 @@ class SellRewards:
                 self.shards[SHARD_LIST[i]] = copy.deepcopy(SHARDS[SHARD_LIST[i]])
         
         self.baseshards = []
+        
+    async def get_staresc(self):
+        return self.staresc
                 
     async def get_shards(self):
         return self.shards
@@ -297,7 +326,7 @@ async def give_rewards(maps):
                 ppresult = await calculatepp(i.sr)
             pp += ppresult
         
-    rewards = SellRewards(pp, shards)
+    rewards = SellRewards(pp, shards, get_star_essence(maps))
     
     await rewards.convert_shards()
     

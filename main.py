@@ -522,6 +522,7 @@ class ItemPaginator(discord.ui.View):
 
         # Initial load
         self.items = flatten_category(user_items, "Shards")
+        print(self.items)
         self.items.sort(key=lambda i: SHARD_RANK.get(i.shardrarity, 0))
         self.pages = chunk_list(self.items, per_page)
 
@@ -872,6 +873,10 @@ class SellingPaginator(discord.ui.View):
         
         for y in rewards.shards.values():
             self.user.add_item(y, "Shard")
+            
+        if not rewards.staresc == None:
+            self.user.add_item(rewards.staresc, "Special")
+            message += f"\nStar Essence: {rewards.staresc.duplicates}"
             
         await self.user.change_pp(rewards.pp)
         

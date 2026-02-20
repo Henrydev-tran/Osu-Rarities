@@ -1,7 +1,7 @@
 from beatmap import *
 import aiofiles
 import json
-from item import Shard
+from item import Shard, ShardCore, Special
 import asyncio
 import orjson
 import pickle
@@ -87,10 +87,9 @@ async def User_To_Dict(user):
     items = {}
         
     for key1, val1 in user.items.items():
-        if key1 == "Shards":
-            for key2, val2 in val1.items():
-                items.setdefault("Shards", {})
-                items["Shards"][key2] = await Item_To_Dict(val2)
+        for key2, val2 in val1.items():
+            items.setdefault(key1, {})
+            items[key1][key2] = await Item_To_Dict(val2)
     
     result = {
         "id": user.id,
@@ -137,6 +136,8 @@ async def UBMO_To_Dict(ubmo):
     return result
 
 async def Item_To_Dict(item):
+    result = "Invalid Item"
+    
     if item.type == "Shard":
         result = {
             "rarity": item.rarity,
@@ -151,9 +152,39 @@ async def Item_To_Dict(item):
             "shardrarity": item.shardrarity
         }
         
-        return result
+    
+    if item.type == "ShardCore":
+        result = {
+            "rarity": item.rarity,
+            "cost": item.cost,
+            "value": item.value,
+            "name": item.name,
+            "function": item.function,
+            "id": item.id,
+            "description": item.description,
+            "duplicates": item.duplicates,
+            "type": item.type,
+            "corerarity": item.corerarity
+        }
+        
+    if item.type == "Special":
+        result = {
+            "rarity": item.rarity,
+            "cost": item.cost,
+            "value": item.value,
+            "name": item.name,
+            "function": item.function,
+            "id": item.id,
+            "description": item.description,
+            "duplicates": item.duplicates,
+            "type": item.type
+        }
+        
+    return result
     
 async def Dict_To_Item(item):
+    result = "Invalid Item"
+    
     if item["type"] == "Shard":
         result = Shard(item["rarity"], 
                        item["cost"], 
@@ -166,7 +197,30 @@ async def Dict_To_Item(item):
                        item["type"], 
                        item["shardrarity"])
         
-        return result
+    if item["type"] == "ShardCore":
+        result = ShardCore(item["rarity"], 
+                       item["cost"], 
+                       item["name"], 
+                       item["value"], 
+                       item["function"], 
+                       item["id"], 
+                       item["description"], 
+                       item["duplicates"], 
+                       item["type"], 
+                       item["corerarity"])
+        
+    if item["type"] == "Special":
+        result = Special(item["rarity"], 
+                       item["cost"], 
+                       item["name"], 
+                       item["value"], 
+                       item["function"], 
+                       item["id"], 
+                       item["description"], 
+                       item["duplicates"], 
+                       item["type"])
+        
+    return result
 
 # There's definitely better ways to do this but cut me some slack
 def UBMO_To_Dict_nonsync(ubmo):

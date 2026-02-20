@@ -17,6 +17,10 @@ class Shard(Item):
         super().__init__(rarity, cost, name, value, function, id, description, duplicates, type)
         self.shardrarity = shardrarity
         
+class Special(Item):
+    def __init__(self, rarity, cost, name, value, function, id, description, duplicates, type):
+        super().__init__(rarity, cost, name, value, function, id, description, duplicates, type)
+        
 class ShardCore(Item):
     def __init__(self, rarity, cost, name, value, function, id, description, duplicates, type, corerarity):
         super().__init__(rarity, cost, name, value, function, id, description, duplicates, type)
@@ -161,6 +165,18 @@ SHARDS = {
         shardrarity="Ultra"
     ),
 } 
+
+STARESSENCE = Special(
+    rarity="Special",
+    cost=False,
+    name="Star Essence",
+    value=500,
+    function="Used for crafting.",
+    id="STAR_ESSENCE",
+    description="Star essence fragments collected from dying stars.",
+    duplicates=1,
+    type="Special"
+)
 
 SHARDS_BY_ID = {
     shard.id: shard
