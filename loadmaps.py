@@ -13,8 +13,14 @@ load_dotenv()
 # Initialize API
 api = AsynchronousClient.from_credentials(37144, os.getenv("app_secret"), None)
 
-with open("json/year.count", "r") as file:
-    query_year = int(file.read())
+import aiofiles
+
+async def _read_year_count():
+    async with aiofiles.open("json/year.count", "r") as file:
+        return int(await file.read())
+
+# query_year will be initialized in async init
+query_year = None
 
 maps = MapPool()
 
@@ -182,6 +188,9 @@ async def loadALL():
             
 # asyncio.run(loadALL())
 
-start = time.perf_counter()
-asyncio.run(load_gmaps_variable())
-print(f"Loaded maps in {time.perf_counter() - start:.3f}s")
+async def init_loadmaps():
+    global query_year
+    query_year = await _read_year_count()
+    start = time.perf_counter()
+    await load_gmaps_variable()
+    print(f"Loaded maps in {time.perf_counter() - start:.3f}s")

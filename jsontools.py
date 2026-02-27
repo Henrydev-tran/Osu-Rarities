@@ -7,11 +7,29 @@ import orjson
 import pickle
 import os
 
+# simple per-file asyncio lock manager to prevent concurrent writes
+_file_locks: dict[str, asyncio.Lock] = {}
+
+def _get_file_lock(path: str) -> asyncio.Lock:
+    lock = _file_locks.get(path)
+    if lock is None:
+        lock = asyncio.Lock()
+        _file_locks[path] = lock
+    return lock
+
 # Saves an object to a json path
 async def save_to_json(path, obj):
-    async with aiofiles.open(path, "w") as file:
-        data = json.dumps(obj)   
-        await file.write(data)
+    lock = _get_file_lock(path)
+    async with lock:
+        # write to temp file then atomically replace
+        temp_path = path + ".tmp"
+        # dump with json (safe) in thread to avoid blocking
+        data = await asyncio.to_thread(json.dumps, obj)
+        async with aiofiles.open(temp_path, "w") as file:
+            await file.write(data)
+
+        # atomic replace
+        await asyncio.to_thread(os.replace, temp_path, path)
         
 def build_maps(maps_json):
     return {
@@ -24,13 +42,22 @@ async def return_json(path):
     cache = path + ".pkl"
 
     if os.path.exists(cache):
-        return await asyncio.to_thread(pickle.load, open(cache, "rb"))
+        def _load_pickle():
+            with open(cache, "rb") as fh:
+                return pickle.load(fh)
+
+        return await asyncio.to_thread(_load_pickle)
 
     async with aiofiles.open(path, "rb") as f:
         raw = await f.read()
 
     data = await asyncio.to_thread(orjson.loads, raw)
-    await asyncio.to_thread(pickle.dump, data, open(cache, "wb"))
+
+    def _dump_pickle(d):
+        with open(cache, "wb") as fh:
+            pickle.dump(d, fh)
+
+    await asyncio.to_thread(_dump_pickle, data)
     return data
     
 # MapPool object that stores all the maps in json and Beatmap form

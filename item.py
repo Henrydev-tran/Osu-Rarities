@@ -166,6 +166,113 @@ SHARDS = {
     ),
 } 
 
+BEATMAP_CHARMS = {
+    "Common": Gear(
+        rarity="Common",
+        cost=False,
+        value=100, # in PP
+        name="Common Beatmap Charm",
+        function="Increases luck when playing beatmaps.",
+        id="CHARM_COMMON",
+        description="A charm that increases your luck when playing beatmaps. Common quality.",
+        duplicates=1,
+        type="Gear",
+        luckincrease=1,
+        luckmultiplier=2
+    ),
+    "Uncommon": Gear(
+        rarity="Uncommon",
+        cost=False,
+        value=300, # in PP
+        name="Uncommon Beatmap Charm",
+        function="Increases luck when playing beatmaps.",
+        id="CHARM_UNCOMMON",
+        description="A charm that increases your luck when playing beatmaps. Uncommon quality.",
+        duplicates=1,
+        type="Gear",
+        luckincrease=1,
+        luckmultiplier=4
+    ),
+    "Rare": Gear(
+        rarity="Rare",
+        cost=False,
+        value=1000, # in PP
+        name="Rare Beatmap Charm",
+        function="Increases luck when playing beatmaps.",
+        id="CHARM_RARE",
+        description="A charm that increases your luck when playing beatmaps. Rare quality.",
+        duplicates=1,
+        type="Gear",
+        luckincrease=1,
+        luckmultiplier=8
+    ),
+    "Epic": Gear(
+        rarity="Epic",
+        cost=False,
+        value=4000, # in PP
+        name="Epic Beatmap Charm",
+        function="Increases luck when playing beatmaps.",
+        id="CHARM_EPIC",
+        description="A charm that increases your luck when playing beatmaps. Epic quality.",
+        duplicates=1,
+        type="Gear",
+        luckincrease=1,
+        luckmultiplier=16
+    ),
+    "Mythic": Gear(
+        rarity="Mythic",
+        cost=False,
+        value=20000, # in PP
+        name="Mythic Beatmap Charm",
+        function="Increases luck when playing beatmaps.",
+        id="CHARM_MYTHIC",
+        description="A charm that increases your luck when playing beatmaps. Mythic quality.",
+        duplicates=1,
+        type="Gear",
+        luckincrease=1,
+        luckmultiplier=32
+    ),
+    "Legendary": Gear(
+        rarity="Legendary",
+        cost=False,
+        value=100000, # in PP
+        name="Legendary Beatmap Charm",
+        function="Increases luck when playing beatmaps.",
+        id="CHARM_LEGENDARY",
+        description="A charm that increases your luck when playing beatmaps. Legendary quality.",
+        duplicates=1,
+        type="Gear",
+        luckincrease=1,
+        luckmultiplier=64
+    ),
+    "Chromatic": Gear(
+        rarity="Chromatic",
+        cost=False,
+        value=750000, # in PP
+        name="Chromatic Beatmap Charm",
+        function="Increases luck when playing beatmaps.",
+        id="CHARM_CHROMATIC",
+        description="A charm that increases your luck when playing beatmaps. Chromatic quality.",
+        duplicates=1,
+        type="Gear",
+        luckincrease=1,
+        luckmultiplier=128
+    ),
+    "Ultra": Gear(
+        rarity="Ultra",
+        cost=False,
+        value=5000000, # in PP
+        name="Ultra Beatmap Charm",
+        function="Increases luck when playing beatmaps.",
+        id="CHARM_ULTRA",
+        description="A charm that increases your luck when playing beatmaps. Ultra quality.",
+        duplicates=1,
+        type="Gear",
+        luckincrease=1,
+        luckmultiplier=256
+    )
+}
+
 STARESSENCE = Special(
     rarity="Special",
     cost=False,

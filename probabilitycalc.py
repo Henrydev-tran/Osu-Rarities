@@ -216,7 +216,9 @@ async def get_random_map(luck: float = 1.0):
     index = await get_random_index(luck)
     return maps[index]
 
-start = time.perf_counter()
-maps = asyncio.run(load_all_diffs())
-asyncio.run(preload_all_luck_tables())
-print(f"Loaded lucktables in {time.perf_counter() - start:.3f}s")
+async def init_probabilitycalc():
+    global maps
+    start = time.perf_counter()
+    maps = await load_all_diffs()
+    await preload_all_luck_tables()
+    print(f"Loaded lucktables in {time.perf_counter() - start:.3f}s")

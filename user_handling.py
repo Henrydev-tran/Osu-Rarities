@@ -4,6 +4,7 @@ from jsontools import *
 import copy
 
 stored_users = UserPool()
+stored_users_lock = asyncio.Lock()
 
 # Returns a User object using a user's discord id. will create a new user in the database if not already created.
 async def login(id):
@@ -33,21 +34,23 @@ async def clear_userdata_all():
     
 async def write_stored_variable():
     global stored_users
-    
-    await stored_users.save_to("json/users.json")
+    async with stored_users_lock:
+        await stored_users.save_to("json/users.json")
     
 async def clear_userdata(id):
     global stored_users
-    
-    await stored_users.update_user(id, User(id))
-    
-    await write_stored_variable()
+    async with stored_users_lock:
+        await stored_users.update_user(id, User(id))
+        await write_stored_variable()
 
 # Update the stored_users variable
 async def update_stored_variables():
     global stored_users
-    
     await stored_users.load_from("json/users.json")
+
+async def init_user_handling():
+    """Initialize user handling state (call once at startup)."""
+    await update_stored_variables()
     
 # Change the value of the stored_users variable
 async def update_stored_users(new): 
@@ -61,4 +64,4 @@ async def update_user(user):
 
     await stored_users.update_user(user.id, user)
     
-asyncio.run(update_stored_variables())
+# DO NOT run initialization at import time. Call `init_user_handling()` from startup.

@@ -5,7 +5,11 @@ import asyncio
 import discord
 from discord.ext import commands
 
+import user_handling
 from user_handling import *
+import loadmaps
+import probabilitycalc
+import jsontools
 from userutils import give_rewards, SHARD_LIST, SHARD_RANK
 
 from dotenv import load_dotenv
@@ -25,6 +29,25 @@ import datetime
 
 client = commands.Bot(command_prefix='o!', intents=discord.Intents(messages=True, guilds=True, message_content=True))
 client.remove_command("help")
+
+_initialized = False
+
+
+@client.event
+async def on_ready():
+    global _initialized
+    if _initialized:
+        return
+    _initialized = True
+
+    # Run module initialization concurrently
+    await asyncio.gather(
+        user_handling.init_user_handling(),
+        loadmaps.init_loadmaps(),
+        probabilitycalc.init_probabilitycalc()
+    )
+
+    print(f"Bot ready as {client.user}")
 
 active_views = {}
 
@@ -1555,5 +1578,32 @@ async def test_embed(ctx):
     embed.set_thumbnail(url="https://b.ppy.sh/thumb/2062263l.jpg")
     
     await ctx.message.reply(embed=embed)
+
+
+@client.command("simulate")
+async def simulate(ctx, users: int = 50, actions: int = 10):
+    """Dev-only: simulate `users` concurrent users each performing `actions` get_random_map calls."""
+    # only allow developers
+    if ctx.author.id not in (718102801242259466, 1177826548729008268):
+        await ctx.message.reply("You do not have the permission to use this command.")
+        return
+
+    await ctx.message.reply(f"Starting simulation: {users} users × {actions} actions...")
+
+    import time
+
+    async def simulate_user(uid: int):
+        for _ in range(actions):
+            # call get_random_map (async, uses luck tables)
+            await probabilitycalc.get_random_map(1.0)
+
+    start = time.perf_counter()
+
+    tasks = [asyncio.create_task(simulate_user(i)) for i in range(users)]
+
+    await asyncio.gather(*tasks)
+
+    elapsed = time.perf_counter() - start
+    await ctx.message.reply(f"Simulation completed in {elapsed:.3f}s ({users * actions} total calls)")
 
 client.run(os.getenv("token"))
