@@ -1,7 +1,7 @@
 from beatmap import *
 import aiofiles
 import json
-from item import Shard, ShardCore, Special
+from item import Shard, ShardCore, Special, Gear
 import asyncio
 import orjson
 import pickle
@@ -206,6 +206,21 @@ async def Item_To_Dict(item):
             "duplicates": item.duplicates,
             "type": item.type
         }
+
+    if item.type == "Gear":
+        result = {
+            "rarity": item.rarity,
+            "cost": item.cost,
+            "value": item.value,
+            "name": item.name,
+            "function": item.function,
+            "id": item.id,
+            "description": item.description,
+            "duplicates": item.duplicates,
+            "type": item.type,
+            "luckincrease": item.luckincrease,
+            "luckmultiplier": item.luckmultiplier
+        }
         
     return result
     
@@ -246,6 +261,19 @@ async def Dict_To_Item(item):
                        item["description"], 
                        item["duplicates"], 
                        item["type"])
+        
+    if item["type"] == "Gear":
+        result = Gear(item["rarity"],
+                      item["cost"],
+                      item["name"],
+                      item["value"],
+                      item["function"],
+                      item["id"],
+                      item["description"],
+                      item["duplicates"],
+                      item["type"],
+                      item.get("luckincrease", 0),
+                      item.get("luckmultiplier", 1))
         
     return result
 

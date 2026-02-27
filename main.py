@@ -23,7 +23,7 @@ from probabilitycalc import *
 from math import ceil
 from userutils import xp_to_next_level
 
-from item import SHARDS_BY_ID, SHARD_CORE_RECIPES, ALL_RECIPES
+from item import SHARDS_BY_ID, SHARD_CORE_RECIPES, ALL_RECIPES, ITEMS_BY_ID
 
 import datetime
 
@@ -163,7 +163,7 @@ class MapPaginator(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
             await interaction.response.send_message(
-                "❌ This crafting menu isn’t yours.",
+                "❌ This menu isn’t yours.",
                 ephemeral=True
             )
             return False
@@ -266,7 +266,8 @@ class CraftCategorySelect(discord.ui.Select):
         options = []
 
         for label, value in [
-            ("Shard Cores", "ShardCores")
+            ("Shard Cores", "ShardCores"),
+            ("Beatmap Charms", "BeatmapCharms")
         ]:
             options.append(
                 discord.SelectOption(
@@ -314,7 +315,7 @@ class CraftingView(discord.ui.View):
         self.add_item(CraftCategorySelect(self.category))
 
         # recipe dropdown (depends on category)
-        recipes = ALL_RECIPES.get(self.category, [])
+        recipes = self.get_recipes_for_category()
         if recipes:
             self.add_item(
                 CraftRecipeSelect(
@@ -324,22 +325,56 @@ class CraftingView(discord.ui.View):
             )
 
         # buttons
+        # determine if selected recipe is Gear (Beatmap Charm)
+        recipe = self.get_selected_recipe()
+        is_gear = False
+        if recipe is not None:
+            is_gear = getattr(recipe.result, 'type', None) == 'Gear'
+
+        # enforce single-quantity for gear
+        if is_gear:
+            self.craft_amount = 1
+
+        # disable +/- when crafting gear since only 1 is allowed
+        self.decrease.disabled = is_gear
+        self.increase.disabled = is_gear
+
         self.add_item(self.decrease)
         self.add_item(self.increase)
         self.add_item(self.craft)
         self.add_item(self.craft_max)
+
+    def disable_all_components(self):
+        """Disable all interactive components in the view (used after crafting)."""
+        for child in self.children:
+            try:
+                child.disabled = True
+            except Exception:
+                pass
             
     def get_recipes_for_category(self):
-        return [
-            r for r in ALL_RECIPES[self.category]
-            if r.can_craft(self.user)
-        ]
+        # Filter available recipes by craftability and prevent showing Gear (charms)
+        # recipes the user already owns.
+        results = []
+        for r in ALL_RECIPES.get(self.category, []):
+            if not r.can_craft(self.user):
+                continue
+
+            res = getattr(r, 'result', None)
+            if res is not None and getattr(res, 'type', None) == 'Gear':
+                # if user already has this gear, skip the recipe
+                if self.user.count_item_by_id(getattr(res, 'id', None)) > 0:
+                    continue
+
+            results.append(r)
+
+        return results
         
     def get_selected_recipe(self):
         if self.selected_recipe_id is None:
             return None
 
-        for recipe in ALL_RECIPES[self.category]:
+        for recipe in ALL_RECIPES.get(self.category, []):
             if recipe.id == self.selected_recipe_id:
                 return recipe
 
@@ -348,8 +383,19 @@ class CraftingView(discord.ui.View):
     def make_embed(self):
         recipe = self.get_selected_recipe()
 
+        # dynamic title: use recipe name if selected, otherwise derive from category
+        if recipe is None:
+            if self.category == "ShardCores":
+                title_text = "🛠 Shard Core Crafting"
+            elif self.category == "BeatmapCharms":
+                title_text = "🛠 Beatmap Charm Crafting"
+            else:
+                title_text = "🛠 Crafting"
+        else:
+            title_text = f"🛠 {recipe.name}"
+
         embed = discord.Embed(
-            title="🛠 Shard Core Crafting",
+            title=title_text,
             color=discord.Color.gold()
         )
         
@@ -374,10 +420,10 @@ class CraftingView(discord.ui.View):
 
         embed.add_field(
             name="Requirements",
-            value="\n".join(
-                f"🔹 {amt}× {SHARDS_BY_ID[item_id].name}"
-                for item_id, amt in recipe.requirements.items()
-            ),
+                value="\n".join(
+                    f"🔹 {amt}× {ITEMS_BY_ID.get(item_id).name if ITEMS_BY_ID.get(item_id) else item_id}"
+                    for item_id, amt in recipe.requirements.items()
+                ),
             inline=False
         )
 
@@ -393,9 +439,15 @@ class CraftingView(discord.ui.View):
             inline=True
         )
 
+        # Show max craftable. For Gear recipes this is always 1 (if available).
+        if getattr(recipe.result, 'type', None) == 'Gear':
+            can_craft_max = 1
+        else:
+            can_craft_max = recipe.max_craftable(self.user)
+
         embed.add_field(
             name="You Can Craft",
-            value=f"{recipe.max_craftable(self.user)} max",
+            value=f"{can_craft_max} max",
             inline=True
         )
 
@@ -421,6 +473,12 @@ class CraftingView(discord.ui.View):
         
     @discord.ui.button(label="➖", style=discord.ButtonStyle.secondary)
     async def decrease(self, interaction, button):
+        # no-op if selected recipe is Gear (only 1 allowed)
+        recipe = self.get_selected_recipe()
+        if recipe is not None and getattr(recipe.result, 'type', None) == 'Gear':
+            await interaction.response.edit_message(embed=self.make_embed(), view=self)
+            return
+
         if self.craft_amount > 1:
             self.craft_amount -= 1
 
@@ -433,6 +491,11 @@ class CraftingView(discord.ui.View):
     async def increase(self, interaction, button):
         recipe = self.get_selected_recipe()
         if not recipe:
+            return
+
+        # no-op if Gear
+        if getattr(recipe.result, 'type', None) == 'Gear':
+            await interaction.response.edit_message(embed=self.make_embed(), view=self)
             return
 
         max_amount = recipe.max_craftable(self.user)
@@ -450,14 +513,27 @@ class CraftingView(discord.ui.View):
         if not recipe:
             return
 
-        if self.craft_amount > recipe.max_craftable(self.user):
+        # Prevent crafting Gear (charms) the user already owns
+        if getattr(recipe.result, 'type', None) == 'Gear' and self.user.count_item_by_id(getattr(recipe.result, 'id', None)) > 0:
+            return await interaction.response.send_message(
+                "You already own this charm and cannot craft another.",
+                ephemeral=True
+            )
+
+        # Enforce single quantity for Gear recipes
+        if getattr(recipe.result, 'type', None) == 'Gear':
+            amount_to_craft = 1
+        else:
+            amount_to_craft = self.craft_amount
+
+        if amount_to_craft > recipe.max_craftable(self.user):
             return await interaction.response.send_message(
                 "Not enough materials.",
                 ephemeral=True
             )
 
-        recipe.consume(self.user, self.craft_amount)
-        recipe.give_result(self.user, self.craft_amount)
+        recipe.consume(self.user, amount_to_craft)
+        recipe.give_result(self.user, amount_to_craft)
         
         await interaction.message.reply(
                 f"Crafted {self.craft_amount}x {recipe.name}"
@@ -466,6 +542,8 @@ class CraftingView(discord.ui.View):
         self.craft_amount = 1  # reset after craft
         
         await update_user(self.user)
+        # Disable the view so the user cannot craft again from the same menu
+        self.disable_all_components()
 
         await interaction.response.edit_message(
             embed=self.make_embed(),
@@ -478,10 +556,22 @@ class CraftingView(discord.ui.View):
         if not recipe:
             return
 
-        amount = recipe.max_craftable(self.user)
+        # Prevent crafting Gear (charms) the user already owns
+        if getattr(recipe.result, 'type', None) == 'Gear' and self.user.count_item_by_id(getattr(recipe.result, 'id', None)) > 0:
+            return await interaction.response.send_message(
+                "You already own this charm and cannot craft another.",
+                ephemeral=True
+            )
+
+        # For Gear recipes, craft exactly 1. Otherwise craft max.
+        if getattr(recipe.result, 'type', None) == 'Gear':
+            amount = 1
+        else:
+            amount = recipe.max_craftable(self.user)
+
         if amount == 0:
             return
-        
+
         recipe.consume(self.user, amount)
         recipe.give_result(self.user, amount)
         
@@ -489,11 +579,14 @@ class CraftingView(discord.ui.View):
 
         self.craft_amount = 1
 
+        # Disable the view after crafting to prevent further interaction
+        self.disable_all_components()
+
         await interaction.response.edit_message(
             embed=self.make_embed(),
             view=self
         )
-        
+
         await interaction.message.reply(
                 f"Crafted {amount}x {recipe.name}"
             )
@@ -575,14 +668,27 @@ class ItemPaginator(discord.ui.View):
                 )
 
             else:
-                embed.add_field(
-                    name=f"{item.name} ×{item.duplicates}",
-                    value=(
+                # If this is Gear, include luck stats
+                if getattr(item, 'type', None) == 'Gear':
+                    value_text = (
+                        f"**Rarity:** {item.rarity}\n"
+                        f"{item.function}\n"
+                        f"**Value:** {item.value}\n"
+                        f"**Luck Increase:** {getattr(item, 'luckincrease', 'N/A')}\n"
+                        f"**Luck Multiplier:** {getattr(item, 'luckmultiplier', 'N/A')}\n"
+                        f"**Description:** {item.description}"
+                    )
+                else:
+                    value_text = (
                         f"**Rarity:** {item.rarity}\n"
                         f"{item.function}\n"
                         f"**Value:** {item.value}\n"
                         f"**Description:** {item.description}"
-                    ),
+                    )
+
+                embed.add_field(
+                    name=f"{item.name} ×{item.duplicates}",
+                    value=value_text,
                     inline=False
                 )
 
@@ -604,7 +710,7 @@ class ItemPaginator(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
             await interaction.response.send_message(
-                "❌ This crafting menu isn’t yours.",
+                "❌ This menu isn’t yours.",
                 ephemeral=True
             )
             return False
@@ -1357,7 +1463,13 @@ async def clear_maps_cmd(ctx):
         return
     
     await ctx.message.reply("You do not have the permission to use this command.")
-        
+    
+@client.command("luckmult")
+async def luckmult(ctx):
+    userdata = await login(ctx.author.id)
+    
+    await ctx.message.reply(f"Your current luck multiplier is {userdata.luck_mult}")
+
 # Clear ALL sorted and ranges maps in the database (dev only, risky)
 @client.command("clear_sorted_diffs")
 async def clear_sorted_diffs_cmd(ctx):

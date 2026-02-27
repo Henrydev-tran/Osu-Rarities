@@ -177,7 +177,7 @@ BEATMAP_CHARMS = {
         description="A charm that increases your luck when playing beatmaps. Common quality.",
         duplicates=1,
         type="Gear",
-        luckincrease=1,
+        luckincrease=0,
         luckmultiplier=2
     ),
     "Uncommon": Gear(
@@ -190,7 +190,7 @@ BEATMAP_CHARMS = {
         description="A charm that increases your luck when playing beatmaps. Uncommon quality.",
         duplicates=1,
         type="Gear",
-        luckincrease=1,
+        luckincrease=0,
         luckmultiplier=4
     ),
     "Rare": Gear(
@@ -203,7 +203,7 @@ BEATMAP_CHARMS = {
         description="A charm that increases your luck when playing beatmaps. Rare quality.",
         duplicates=1,
         type="Gear",
-        luckincrease=1,
+        luckincrease=0,
         luckmultiplier=8
     ),
     "Epic": Gear(
@@ -216,7 +216,7 @@ BEATMAP_CHARMS = {
         description="A charm that increases your luck when playing beatmaps. Epic quality.",
         duplicates=1,
         type="Gear",
-        luckincrease=1,
+        luckincrease=0,
         luckmultiplier=16
     ),
     "Mythic": Gear(
@@ -229,7 +229,7 @@ BEATMAP_CHARMS = {
         description="A charm that increases your luck when playing beatmaps. Mythic quality.",
         duplicates=1,
         type="Gear",
-        luckincrease=1,
+        luckincrease=0,
         luckmultiplier=32
     ),
     "Legendary": Gear(
@@ -242,7 +242,7 @@ BEATMAP_CHARMS = {
         description="A charm that increases your luck when playing beatmaps. Legendary quality.",
         duplicates=1,
         type="Gear",
-        luckincrease=1,
+        luckincrease=0,
         luckmultiplier=64
     ),
     "Chromatic": Gear(
@@ -255,7 +255,7 @@ BEATMAP_CHARMS = {
         description="A charm that increases your luck when playing beatmaps. Chromatic quality.",
         duplicates=1,
         type="Gear",
-        luckincrease=1,
+        luckincrease=0,
         luckmultiplier=128
     ),
     "Ultra": Gear(
@@ -268,10 +268,42 @@ BEATMAP_CHARMS = {
         description="A charm that increases your luck when playing beatmaps. Ultra quality.",
         duplicates=1,
         type="Gear",
-        luckincrease=1,
+        luckincrease=0,
         luckmultiplier=256
     )
 }
+
+# Crafting recipes for Beatmap Charms
+BEATMAP_CHARM_RECIPES = []
+
+# Create recipes so that:
+# {rarity} Beatmap Charm = {rarity} Shards x 25 + 1 Beatmap Charm of lower rarity
+# Common charms only need 25 shards (no lower charm prerequisite)
+shard_rarity_order = list(SHARDS.keys())
+
+for idx, rarity in enumerate(shard_rarity_order):
+    charm = BEATMAP_CHARMS.get(rarity)
+    if not charm:
+        continue
+
+    requirements = {SHARDS[rarity].id: 25}
+
+    # for non-common rarities, require one lower-rarity charm
+    if idx > 0:
+        lower = shard_rarity_order[idx - 1]
+        lower_charm = BEATMAP_CHARMS.get(lower)
+        if lower_charm:
+            requirements[lower_charm.id] = 1
+
+    recipe = CraftingRecipe(
+        id=f"CRAFT_CHARM_{rarity.upper()}",
+        name=f"{rarity} Beatmap Charm",
+        result=charm,
+        requirements=requirements,
+        description=f"Craft a {rarity} Beatmap Charm using 25 {rarity} shards" + (f" + 1 {lower} Beatmap Charm" if idx > 0 else "")
+    )
+
+    BEATMAP_CHARM_RECIPES.append(recipe)
 
 STARESSENCE = Special(
     rarity="Special",
@@ -322,7 +354,8 @@ for rarity, shard in SHARDS.items():
     SHARD_CORE_RECIPES.append(recipe)
     
 ALL_RECIPES = {
-    "ShardCores": SHARD_CORE_RECIPES
+    "ShardCores": SHARD_CORE_RECIPES,
+    "BeatmapCharms": BEATMAP_CHARM_RECIPES
 }
 
 RECIPES_BY_ID = {
@@ -330,3 +363,16 @@ RECIPES_BY_ID = {
     for recipes in ALL_RECIPES.values()
     for recipe in recipes
 }
+
+# A lookup of all items by their `id` for convenience
+ITEMS_BY_ID = {}
+for shard in SHARDS.values():
+    ITEMS_BY_ID[shard.id] = shard
+
+for core in SHARD_CORES.values():
+    ITEMS_BY_ID[core.id] = core
+
+for charm in BEATMAP_CHARMS.values():
+    ITEMS_BY_ID[charm.id] = charm
+
+ITEMS_BY_ID[STARESSENCE.id] = STARESSENCE

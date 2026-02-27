@@ -62,6 +62,45 @@ class User:
             except:    
                 specialitem[item.id] = item
                 
+        if type == "Gear":
+            gear = self.items.setdefault("Gear", {})
+            # enforce one-per-type cap for Beatmap Charms (Gear)
+            existing = gear.get(item.id)
+            if existing:
+                # already have this charm type; cap at 1 (no stacking)
+                existing.duplicates = 1
+            else:
+                item.duplicates = 1
+                gear[item.id] = item
+            # recalculate luck when gear is added
+            try:
+                self.recalculate_luck()
+            except Exception:
+                pass
+
+    def recalculate_luck(self):
+        """Recalculate player's luck multiplier from equipped Gear items.
+
+        Formula applied per gear instance:
+            playerluck = playerluck * luckmultiplier + luckincrease
+
+        The calculation starts from base 1.0 and applies each gear item 'duplicates' times.
+        The resulting value is stored in `self.luck_mult` and returned.
+        """
+        base_luck = 1.0
+        playerluck = base_luck
+
+        gear_items = self.items.get("Gear", {})
+        for gear in gear_items.values():
+            # treat duplicates as at most 1 to enforce one-per-type behavior
+            times = min(1, max(0, int(getattr(gear, 'duplicates', 0))))
+            for _ in range(times):
+                playerluck = playerluck * getattr(gear, 'luckmultiplier', 1) + getattr(gear, 'luckincrease', 0)
+
+        # store as the user's luck multiplier
+        self.luck_mult = playerluck
+        return self.luck_mult
+                
     def remove_item_by_id(self, id, amount):
         obj = self.find_item_by_id(id)
         
@@ -73,31 +112,22 @@ class User:
         obj.duplicates += amount
     
     def count_item_by_id(self, id):
-        obj_dupes = 0
-        
-        print(id)
-        
+        # Search all item categories and return the duplicates for the matching item id
         for items in self.items.values():
-            obj_dupes = next(
-                (obj for obj in items.values() if obj.id == id),
-                0  # returned if not found
-            )
-            
-        if not obj_dupes == 0:
-            obj_dupes = obj_dupes.duplicates
-            
-        return obj_dupes
+            found = next((obj for obj in items.values() if obj.id == id), None)
+            if found is not None:
+                return getattr(found, 'duplicates', 0)
+
+        return 0
     
     def find_item_by_id(self, id):
-        obj = None
-        
+        # Return the first matching item object by id, searching all categories
         for items in self.items.values():
-            obj = next(
-                (obj for obj in items.values() if obj.id == id),
-                None  # returned if not found
-            )
-            
-        return obj
+            found = next((obj for obj in items.values() if obj.id == id), None)
+            if found is not None:
+                return found
+
+        return None
 
     async def change_pp(self, amount):
         self.pp += amount
@@ -403,6 +433,11 @@ class UserPool:
         
         for i in self.users_json:
             self.users[i] = await Dict_To_User(self.users_json[i])
+            # ensure luck multiplier reflects any Gear items on startup
+            try:
+                self.users[i].recalculate_luck()
+            except Exception:
+                pass
             
     async def update_user(self, id, new):
         self.users[str(id)] = new
