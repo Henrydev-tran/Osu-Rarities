@@ -1581,29 +1581,69 @@ async def test_embed(ctx):
 
 
 @client.command("simulate")
-async def simulate(ctx, users: int = 50, actions: int = 10):
-    """Dev-only: simulate `users` concurrent users each performing `actions` get_random_map calls."""
+async def simulate(ctx, users: int = 50, actions: int = 10, mode: str = "roll"):
+    """Dev-only: simulate `users` concurrent users each performing `actions` get_random_map calls.
+    mode: 'roll' (default) only calls `get_random_map`; 'sell' will simulate rolling then selling each user's collected maps.
+    """
     # only allow developers
     if ctx.author.id not in (718102801242259466, 1177826548729008268):
         await ctx.message.reply("You do not have the permission to use this command.")
         return
 
-    await ctx.message.reply(f"Starting simulation: {users} users × {actions} actions...")
+    await ctx.message.reply(f"Starting simulation: {users} users × {actions} actions... mode={mode}")
 
     import time
 
     async def simulate_user(uid: int):
+        # if mode is sell, collect rolled difficulties per user
+        collected = {}
         for _ in range(actions):
             # call get_random_map (async, uses luck tables)
-            await probabilitycalc.get_random_map(1.0)
+            result = await probabilitycalc.get_random_map(1.0)
+            if mode == "sell":
+                # result is a dict with "star_rating"
+                sr = result.get("star_rating") or result.get("star_rating")
+                # aggregate duplicates by star rating
+                collected[sr] = collected.get(sr, 0) + 1
+        return collected
 
     start = time.perf_counter()
 
     tasks = [asyncio.create_task(simulate_user(i)) for i in range(users)]
 
-    await asyncio.gather(*tasks)
+    results = await asyncio.gather(*tasks)
 
     elapsed = time.perf_counter() - start
-    await ctx.message.reply(f"Simulation completed in {elapsed:.3f}s ({users * actions} total calls)")
+
+    if mode != "sell":
+        await ctx.message.reply(f"Simulation completed in {elapsed:.3f}s ({users * actions} total calls)")
+        return
+
+    # mode == 'sell' -> process selling for each simulated user
+    class SimDiff:
+        def __init__(self, sr, duplicates):
+            self.sr = sr
+            self.duplicates = duplicates
+
+    sell_start = time.perf_counter()
+    total_shards = 0
+    total_pp = 0
+
+    for collected in results:
+        # build list of SimDiff objects
+        diffs = [SimDiff(float(sr), cnt) for sr, cnt in collected.items()]
+
+        rewards = await give_rewards(diffs)
+        # accumulate totals
+        total_pp += rewards.pp
+        for sh in rewards.shards.values():
+            total_shards += sh.duplicates
+
+    sell_elapsed = time.perf_counter() - sell_start
+
+    await ctx.message.reply((
+        f"Simulation completed. roll_time={elapsed:.3f}s sell_time={sell_elapsed:.3f}s "
+        f"(total calls={users * actions}, total_pp={format_number(total_pp)}, total_shards={format_number(total_shards)})"
+    ))
 
 client.run(os.getenv("token"))

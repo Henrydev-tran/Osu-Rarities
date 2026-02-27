@@ -2,6 +2,8 @@ from loadmaps import find_ubmo, return_json, save_to_json, User_To_Dict, Beatmap
 from jsontools import Dict_To_UBMO, UBMO_To_Dict, Dict_To_Item
 import random
 from raritycalculation import calculatepp
+import math
+from collections import Counter
 from item import SHARDS, STARESSENCE
 import copy
 
@@ -184,14 +186,25 @@ class SellRewards:
         self.shards = {}
         self.staresc = staresc
     
-    async def convert_shards(self):
-        for i in self.baseshards:
-            try:
-                self.shards[SHARD_LIST[i]].duplicates += 1
-            except:
-                self.shards[SHARD_LIST[i]] = copy.deepcopy(SHARDS[SHARD_LIST[i]])
-        
-        self.baseshards = []
+    def convert_shards(self):
+        # baseshards can be a Counter mapping shard_id -> count or a list of shard ids
+        if isinstance(self.baseshards, Counter):
+            for shard_id, count in self.baseshards.items():
+                name = SHARD_LIST[shard_id]
+                try:
+                    self.shards[name].duplicates += count
+                except:
+                    new_obj = copy.deepcopy(SHARDS[name])
+                    new_obj.duplicates = count
+                    self.shards[name] = new_obj
+        else:
+            for i in self.baseshards:
+                try:
+                    self.shards[SHARD_LIST[i]].duplicates += 1
+                except:
+                    self.shards[SHARD_LIST[i]] = copy.deepcopy(SHARDS[SHARD_LIST[i]])
+
+        self.baseshards = Counter()
         
     async def get_staresc(self):
         return self.staresc
@@ -271,12 +284,24 @@ SR_TABLE = {
     }
 }
 
-async def get_shards(sr: float) -> list[int]:
+# Precompute a quick lookup from integer star to SR_TABLE entry to avoid looping SR_TABLE each call
+_SR_LOOKUP = {}
+for (low, high), data in SR_TABLE.items():
+    for i in range(int(low), int(high)):
+        _SR_LOOKUP[i] = (low, high, data)
+
+def _get_sr_entry(sr: float):
+    if sr > 14:
+        return None  # special ultra handling
+    key = int(math.floor(sr))
+    return _SR_LOOKUP.get(key)
+
+def get_shards_single(sr: float) -> list[int]:
+    """Return shard ids for a single roll (one duplicate). Optimized lookup."""
     shards = []
 
     if sr > 14:
-        shards.extend([8] * 5)  # 5 guaranteed ultra shards
-
+        shards.extend([8] * 5)
         roll = random.random()
         if roll < 0.60:
             shards.extend([8] * 2)
@@ -284,52 +309,87 @@ async def get_shards(sr: float) -> list[int]:
             shards.extend([8] * 4)
         else:
             shards.extend([8] * 6)
-
         return shards
 
-    # normal SR handling
-    for (low, high), data in SR_TABLE.items():
-        if low <= sr < high:
+    entry = _get_sr_entry(sr)
+    if entry is None:
+        raise ValueError("SR out of supported range")
 
-            # guaranteed shard
-            if data["guaranteed"] is None:
-                if (low, high) == (8, 9):
-                    shards.append(random.choice([4, 5]))
-                elif (low, high) == (12, 13):
-                    shards.append(random.choice([7, 8]))
+    low, high, data = entry
+
+    if data["guaranteed"] is None:
+        if (low, high) == (8, 9):
+            shards.append(random.choice([4, 5]))
+        elif (low, high) == (12, 13):
+            shards.append(random.choice([7, 8]))
+    else:
+        shards.append(data["guaranteed"])
+
+    for shard_id, chance in data["rolls"]:
+        if random.random() < chance:
+            shards.append(shard_id)
+
+    return shards
+
+def get_shards_aggregate(sr: float, duplicates: int) -> Counter:
+    """Return a Counter mapping shard_id -> count for `duplicates` independent rolls."""
+    counter = Counter()
+    if duplicates <= 0:
+        return counter
+
+    if sr > 14:
+        # each duplicate gives the same base 5 ultras + an extra 2/4/6 based on a roll
+        for _ in range(duplicates):
+            counter[8] += 5
+            roll = random.random()
+            if roll < 0.60:
+                counter[8] += 2
+            elif roll < 0.85:
+                counter[8] += 4
             else:
-                shards.append(data["guaranteed"])
+                counter[8] += 6
 
-            # independent rolls
-            for shard_id, chance in data["rolls"]:
-                if random.random() < chance:
-                    shards.append(shard_id)
+        return counter
 
-            return shards
+    entry = _get_sr_entry(sr)
+    if entry is None:
+        raise ValueError("SR out of supported range")
 
-    raise ValueError("SR out of supported range")
+    low, high, data = entry
+
+    # For each duplicate, update counter based on deterministic guaranteed and probabilistic rolls
+    for _ in range(duplicates):
+        if data["guaranteed"] is None:
+            if (low, high) == (8, 9):
+                counter[random.choice([4, 5])] += 1
+            elif (low, high) == (12, 13):
+                counter[random.choice([7, 8])] += 1
+        else:
+            counter[data["guaranteed"]] += 1
+
+        for shard_id, chance in data["rolls"]:
+            if random.random() < chance:
+                counter[shard_id] += 1
+
+    return counter
 
 async def give_rewards(maps):
-    shards = []
+    shard_counts = Counter()
     pp = 0
-    
+
     for i in maps:
-        for y in range(i.duplicates):
-            shardresult = await get_shards(i.sr)
-            
-            shards.extend(shardresult)
-            
-            ppresult = 0
-            if i.sr > 15:
-                ppresult = await calculatepp(15)
-            else:
-                ppresult = await calculatepp(i.sr)
-            pp += ppresult
-        
-    rewards = SellRewards(pp, shards, get_star_essence(maps))
-    
-    await rewards.convert_shards()
-    
+        # aggregate shard rolls for this difficulty using duplicates
+        if i.duplicates > 0:
+            shard_counts.update(get_shards_aggregate(i.sr, i.duplicates))
+
+        # compute PP once per difficulty and multiply
+        sr_for_pp = 15 if i.sr > 15 else i.sr
+        pp += calculatepp(sr_for_pp) * i.duplicates
+
+    rewards = SellRewards(pp, shard_counts, get_star_essence(maps))
+
+    rewards.convert_shards()
+
     return rewards
 
 # UserPool object that stores all users in User object form and json form
