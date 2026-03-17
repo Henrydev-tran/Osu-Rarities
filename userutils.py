@@ -91,6 +91,12 @@ class User:
         playerluck = base_luck
 
         gear_items = self.items.get("Gear", {})
+        
+        peripheralitems = self.items.get("GearPeripheral", {})
+        equipped_peripherals = [item for item in peripheralitems.values() if getattr(item, 'equipped', False)]
+        
+        gear_items.extend(equipped_peripherals)
+        
         for gear in gear_items.values():
             # treat duplicates as at most 1 to enforce one-per-type behavior
             times = min(1, max(0, int(getattr(gear, 'duplicates', 0))))
@@ -98,7 +104,7 @@ class User:
                 playerluck = playerluck * getattr(gear, 'luckmultiplier', 1) + getattr(gear, 'luckincrease', 0)
 
         # store as the user's luck multiplier
-        self.luck_mult = playerluck
+        self.luck_mult = round(playerluck)
         return self.luck_mult
                 
     def remove_item_by_id(self, id, amount):
@@ -154,7 +160,9 @@ class User:
             leveled_up = True
             
         return leveled_up
-        
+
+# Returns the xp required to reach the next level
+# Params: level, base xp for l1, growth of xp/level
 def xp_to_next_level(level, base=100, growth=1.15):
     return int(base * (growth ** (level - 1)))
 
@@ -177,6 +185,7 @@ async def Dict_To_User(data):
     
     return result
 
+# List of all shards
 SHARD_LIST = [
     "None",
     "Common",
@@ -191,9 +200,11 @@ SHARD_LIST = [
 
 SHARD_RANK = {rarity: i for i, rarity in enumerate(SHARD_LIST)}
 
+# Returns the chance of getting a Star Essence from a given star rating
 def star_essence_chance(sr):
     return min(100, 5 * 20 ** ((sr - 1) / 6)) / 100
 
+# Returns star essence rewards based on given maps
 def get_star_essence(maps):
     result = None
     
@@ -207,7 +218,7 @@ def get_star_essence(maps):
     
     return result
                 
-
+# Stores the rewards for selling maps
 class SellRewards:
     def __init__(self, pp, shards, staresc):
         self.pp = pp
@@ -320,14 +331,15 @@ for (low, high), data in SR_TABLE.items():
     for i in range(int(low), int(high)):
         _SR_LOOKUP[i] = (low, high, data)
 
+# Gets the SR_TABLE entry for a given star rating, handling the special case of >14 as ultra
 def _get_sr_entry(sr: float):
     if sr > 14:
         return None  # special ultra handling
     key = int(math.floor(sr))
     return _SR_LOOKUP.get(key)
 
+# Return shard ids for a single roll (one duplicate). Optimized lookup.
 def get_shards_single(sr: float) -> list[int]:
-    """Return shard ids for a single roll (one duplicate). Optimized lookup."""
     shards = []
 
     if sr > 14:
@@ -361,8 +373,8 @@ def get_shards_single(sr: float) -> list[int]:
 
     return shards
 
+# Return a Counter mapping shard_id -> count for `duplicates` independent rolls.
 def get_shards_aggregate(sr: float, duplicates: int) -> Counter:
-    """Return a Counter mapping shard_id -> count for `duplicates` independent rolls."""
     counter = Counter()
     if duplicates <= 0:
         return counter
@@ -403,6 +415,7 @@ def get_shards_aggregate(sr: float, duplicates: int) -> Counter:
 
     return counter
 
+# Returns rewards obtained from given maps
 async def give_rewards(maps):
     shard_counts = Counter()
     pp = 0

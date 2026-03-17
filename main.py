@@ -23,7 +23,7 @@ from probabilitycalc import *
 from math import ceil
 from userutils import xp_to_next_level
 
-from item import SHARDS_BY_ID, SHARD_CORE_RECIPES, ALL_RECIPES, ITEMS_BY_ID
+from item import SHARDS_BY_ID, SHARD_CORE_RECIPES, ALL_RECIPES, ITEMS_BY_ID, SHOP_ITEMS
 
 import datetime
 
@@ -32,7 +32,7 @@ client.remove_command("help")
 
 _initialized = False
 
-
+# Loads all the necessary data for the bot to function
 @client.event
 async def on_ready():
     global _initialized
@@ -83,6 +83,7 @@ def get_star_emoji(star_rating: float) -> str:
 def chunk_list(lst, size):
     return [lst[i:i + size] for i in range(0, len(lst), size)]
 
+# Format a number with commas for thousands and above
 def format_number(n: int) -> str:
     return format(n, ",")
 
@@ -189,7 +190,8 @@ class MapPaginator(discord.ui.View):
 
             self.paginator.update_pages()
             await interaction.response.edit_message(embed=self.paginator.make_embed(), view=self.paginator)
-            
+
+# Dropdown for selecting item categories in inventory views
 class ItemCategorySelect(discord.ui.Select):
     def __init__(self, user_items, paginator):
         self.user_items = user_items
@@ -229,7 +231,8 @@ class ItemCategorySelect(discord.ui.Select):
             embed=self.paginator.make_embed(),
             view=self.paginator
         )
-            
+
+# Dropdown for selecting crafting recipes in recipe menu
 class CraftRecipeSelect(discord.ui.Select):
     def __init__(self, recipes, selected_recipe_id: str | None):
         options = []
@@ -260,7 +263,8 @@ class CraftRecipeSelect(discord.ui.Select):
             embed=view.make_embed(),
             view=view
         )
-  
+
+# Dropdown for selecting crafting categories in recipe menu
 class CraftCategorySelect(discord.ui.Select):
     def __init__(self, current_category: str):
         options = []
@@ -290,7 +294,30 @@ class CraftCategorySelect(discord.ui.Select):
             embed=view.make_embed(),
             view=view
         )         
-            
+
+# Class displays shop items in a paging system (WIP)
+class ShopView(discord.ui.View):
+    def __init__(self, user, author: discord.User, per_page=5):
+        super().__init__(timeout=120)
+        self.user = user
+        self.author_id = author.id
+        self.items = SHOP_ITEMS[:]
+        self.pages = chunk_list(self.items, per_page)
+        self.index = 0
+ 
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "❌ This shop menu isn’t yours.",
+                ephemeral=True
+            )
+            return False
+        return True
+
+# Class for crafting menu, includes category and recipe dropdowns and crafting buttons
+# When I built this, I was barely awake on like 2 hours of sleep and I have no recollection of ever writing it. 
+# Realistically this code is never getting touched again by me
+# I won't even try to optimize it.
 class CraftingView(discord.ui.View):
     def __init__(self, user, author: discord.User):
         super().__init__(timeout=120)
@@ -599,7 +626,8 @@ class CraftingView(discord.ui.View):
             )
             return False
         return True
-            
+
+# Flattens a dict of item categories into a single list of items for pagination
 async def flatten_items(items_dict):
     """
     Turns:
@@ -615,6 +643,7 @@ async def flatten_items(items_dict):
 
     return items
 
+# Like flatten_items but for a specific category, returns list of items in that category or empty list if category not found
 def flatten_category(items_dict, category: str):
     """
     {"Shards": {"Common": Shard, "Uncommon": Shard}}
@@ -623,9 +652,11 @@ def flatten_category(items_dict, category: str):
     category_items = items_dict.get(category, {})
     return list(category_items.values())
 
+# Returns the index of a shard rarity for sorting purposes, higher means rarer
 def shard_rarity_index(rarity: str) -> int:
     return SHARD_RANK.get(rarity, 0)
 
+# Displays a user's inventory in a paginated embed with category selection
 class ItemPaginator(discord.ui.View):
     def __init__(self, user_items, username, author: discord.User, per_page=8):
         super().__init__(timeout=120)
@@ -1139,7 +1170,8 @@ async def loadmanypages(ctx, num):
         return
     
     await ctx.message.reply("You do not have the permission to use this command.")  
-    
+
+# Sell a map from user's inventory
 @client.command("sellmaps")
 async def sellmaps(ctx, id = None):
     userid = ctx.author.id
@@ -1181,12 +1213,14 @@ async def sellmaps(ctx, id = None):
     
     active_views[userid] = (msg, view)
 
+# Check PP balance of user
 @client.command("balance")
 async def balance(ctx):
     userdata = await login(ctx.author.id)
     
     await ctx.message.reply(f"You currently have {format_number(userdata.pp)} PP.")
-    
+
+# Check user's items
 @client.command("items")
 async def items(ctx):
     username = ctx.author.display_name
@@ -1299,7 +1333,8 @@ async def calc_ranges(ctx):
         return  
     
     await ctx.message.reply("You do not have the permission to use this command.") """
-    
+
+# Get a specific beatmap and add it to user's inventory (dev only)
 @client.command("getmap")
 async def getmap(ctx, id, bmid, amount=1):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268 or ctx.author.id == 970958596424761366:
@@ -1337,9 +1372,14 @@ async def getmap(ctx, id, bmid, amount=1):
         return
     
     await ctx.message.reply("You do not have the permission to use this command.") 
-    
+
+# Set the luck multiplier of the user (dev only)
 @client.command("setluck")
 async def setluck(ctx, luck):
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268 or ctx.author.id == 970958596424761366:
+        await ctx.message.reply("You do not have the permission to use this command.")
+        return
+    
     if int(luck) > 999_999_999_999:
         await ctx.message.reply("Luck multiplier demanded is too high, max is 999,999,999,999 (999 billion)")
         
@@ -1398,7 +1438,8 @@ async def roll_random(ctx):
         return
         
     await ctx.message.reply("Rolling had been temporarily disabled by the developer.")
-    
+
+# Check user's level, XP and XP progress bar (soon this will be displayed in a profile page instead of a command)
 @client.command("level")
 async def level(ctx):
     userdata = await login(ctx.author.id)
@@ -1410,7 +1451,8 @@ async def level(ctx):
         f"Level {format_number(userdata.level)} - {bar} - {format_number(userdata.level+1)}\n"
         f"{format_number(userdata.xp)}/{format_number(xp_needed)} XP"
     ))
-    
+
+# Clear userdata of a specific user (dev only, risky)
 @client.command("clear_userdata")
 async def clear_userdata_cmd(ctx, id):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:    
@@ -1463,7 +1505,8 @@ async def clear_maps_cmd(ctx):
         return
     
     await ctx.message.reply("You do not have the permission to use this command.")
-    
+
+# Check user's current luck multiplier (soon this will be displayed in a profile page instead of a command)
 @client.command("luckmult")
 async def luckmult(ctx):
     userdata = await login(ctx.author.id)
@@ -1507,6 +1550,8 @@ async def uov(ctx):
     await ctx.message.reply("You do not have the permission to use this command.")
     
 # Check available commands
+# This function is super old
+# Pending update
 @client.command("help")
 async def help(ctx):
     await login(ctx.author.id)
@@ -1520,7 +1565,15 @@ load_beatmapset - Returns json data of a beatmapset with a given bms id. Argumen
 mapsloaded - Check how many maps has been loaded into the database. example: o!mapsloaded.
 help - Shows this message.
 7 more dev-only commands.""")
-    
+
+# Shop command
+# WIP, pending implementation of shop system and items
+@client.command("shop")
+async def shop(ctx):
+    userdata = await login(ctx.author.id)
+
+# Crafting command
+# More items soon
 @client.command("craft")
 async def craft(ctx):
     userdata = await login(ctx.author.id)
@@ -1547,7 +1600,8 @@ async def craft(ctx):
     msg = await ctx.send(embed=view.make_embed(), view=view)
     
     active_views[ctx.author.id] = (msg, view)
-    
+
+# Lookup command to check beatmap info and if user has it in inventory
 @client.command("lookup")
 async def lookup(ctx, beatmapid):
     userdata = await login(ctx.author.id)
@@ -1601,6 +1655,8 @@ async def lookup(ctx, beatmapid):
     
     await ctx.message.reply(embed=embed)
 
+# I forgot what this does
+# I think it was for testing adding and removing items from inventory, pending removal or update
 @client.command("test1")
 async def t1(ctx, id, amount):
     userdata = await login(ctx.author.id)
@@ -1610,13 +1666,17 @@ async def t1(ctx, id, amount):
     await update_user(userdata)
     
     await ctx.message.reply("Done.")
-    
+
+# Why do i keep adding random commands
+# Removal soon
 @client.command("test2")
 async def t1(ctx, id):
     userdata = await login(ctx.author.id)
     
     await ctx.message.reply(await userdata.count_item_by_id(id))
         
+# Inventory command to check user's maps
+# Pending command change as o!items and o!inventory is confusing, maybe o!maps or something like that
 @client.command("inventory")
 async def inventory(ctx, id = None):
     userid = ctx.author.id
@@ -1658,7 +1718,7 @@ async def inventory(ctx, id = None):
     
     active_views[userid] = (msg, view)
     
-    
+# Recalculate rarities of maps in the database in case of formula change (dev only)
 @client.command("recalculate_rarities")
 async def recalculate_rarities(ctx):
     if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
@@ -1691,7 +1751,7 @@ async def test_embed(ctx):
     
     await ctx.message.reply(embed=embed)
 
-
+# Simulation command to test performance of get_random_map and give_rewards functions with concurrent users (dev only)
 @client.command("simulate")
 async def simulate(ctx, users: int = 50, actions: int = 10, mode: str = "roll"):
     """Dev-only: simulate `users` concurrent users each performing `actions` get_random_map calls.

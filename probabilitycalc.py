@@ -216,6 +216,7 @@ async def get_random_map(luck: float = 1.0):
     index = await get_random_index(luck)
     return maps[index]
 
+# Debug function to test speed of loading maps and building luck tables
 async def init_probabilitycalc():
     global maps
     start = time.perf_counter()

@@ -34,6 +34,7 @@ class Beatmap_Difficulty_Cumulative_Range:
         self.range = R
         self.difficulty_name = diff_name
 
+# Beatmapdifficulty object, stores data of a beatmap difficulty and its range & cumulative probability, but with duplicates
 class User_BMD_Object:
     def __init__(self, sr, parent_id, id, title, artist, diff_name, duplicates=1):
         self.id = id
@@ -44,7 +45,9 @@ class User_BMD_Object:
         self.artist = artist
         self.difficulty_name = diff_name
         self.duplicates = duplicates
-        
+
+# Beatmap object, stores data of a beatmapset, but with difficulties as User_BMD_Object to store duplicates
+# Built-in jsonify_diffs function for both sync and non-sync
 class User_BM_Object:
     def __init__(self, id, title, artist, mapper, status, difficulties=[]):
         self.id = id

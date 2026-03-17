@@ -1,7 +1,7 @@
 from beatmap import *
 import aiofiles
 import json
-from item import Shard, ShardCore, Special, Gear
+from item import Shard, ShardCore, Special, Gear, Gear_Peripheral
 import asyncio
 import orjson
 import pickle
@@ -10,6 +10,7 @@ import os
 # simple per-file asyncio lock manager to prevent concurrent writes
 _file_locks: dict[str, asyncio.Lock] = {}
 
+# get or create a lock for a given file path
 def _get_file_lock(path: str) -> asyncio.Lock:
     lock = _file_locks.get(path)
     if lock is None:
@@ -30,7 +31,8 @@ async def save_to_json(path, obj):
 
         # atomic replace
         await asyncio.to_thread(os.replace, temp_path, path)
-        
+
+# Builds a dict of Beatmap objects from a dict of json data
 def build_maps(maps_json):
     return {
         k: Dict_to_Beatmap(v)
@@ -105,6 +107,7 @@ async def Beatmap_To_Json(beatmap):
     
     return result
 
+# Returns a Dict from a given User object
 async def User_To_Dict(user):
     maps = []
     
@@ -133,6 +136,7 @@ async def User_To_Dict(user):
     
     return result
 
+# Returns a User_BMD_Object from a given dict
 async def Dict_to_UBMD(dict):
     difficulty = User_BMD_Object(dict["star_rating"], dict["parent_id"], dict["id"], dict["title"], dict["artist"], dict["difficulty_name"], dict["duplicates"])
     
@@ -162,6 +166,7 @@ async def UBMO_To_Dict(ubmo):
     
     return result
 
+# Return a Dict from a given Item object
 async def Item_To_Dict(item):
     result = "Invalid Item"
     
@@ -222,8 +227,26 @@ async def Item_To_Dict(item):
             "luckmultiplier": item.luckmultiplier
         }
         
+    if item.type == "GearPeripheral":
+        result = {
+            "rarity": item.rarity,
+            "cost": item.cost,
+            "value": item.value,
+            "name": item.name,
+            "function": item.function,
+            "id": item.id,
+            "description": item.description,
+            "duplicates": item.duplicates,
+            "type": item.type,
+            "luckincrease": item.luckincrease,
+            "luckmultiplier": item.luckmultiplier,
+            "peripheraltype": item.peripheraltype,
+            "equipped": item.equipped
+        }
+        
     return result
-    
+
+# Returns an Item object from a given dict
 async def Dict_To_Item(item):
     result = "Invalid Item"
     
@@ -274,6 +297,21 @@ async def Dict_To_Item(item):
                       item["type"],
                       item.get("luckincrease", 0),
                       item.get("luckmultiplier", 1))
+        
+    if item["type"] == "GearPeripheral":
+        result = Gear_Peripheral(item["rarity"],
+                      item["cost"],
+                      item["name"],
+                      item["value"],
+                      item["function"],
+                      item["id"],
+                      item["description"],
+                      item["duplicates"],
+                      item["type"],
+                      item.get("luckincrease", 0),
+                      item.get("luckmultiplier", 1),
+                      item.get("peripheraltype", "Unknown"),
+                      item.get("equipped", False))
         
     return result
 

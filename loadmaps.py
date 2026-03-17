@@ -188,6 +188,7 @@ async def loadALL():
             
 # asyncio.run(loadALL())
 
+# Debug function to test speed of loading maps
 async def init_loadmaps():
     global query_year
     query_year = await _read_year_count()

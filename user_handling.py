@@ -26,17 +26,20 @@ async def login(id):
         
     return userdata
 
+# Clear all userdata
 async def clear_userdata_all():
     async with aiofiles.open("json/users.json", "w") as file:
         await file.write("{}")
         
     await stored_users.clear_all()
-    
+
+# Write the stored_users variable to json file
 async def write_stored_variable():
     global stored_users
     async with stored_users_lock:
         await stored_users.save_to("json/users.json")
-    
+
+# Clear a specific user's data and replace it with default values
 async def clear_userdata(id):
     global stored_users
     async with stored_users_lock:
@@ -48,6 +51,7 @@ async def update_stored_variables():
     global stored_users
     await stored_users.load_from("json/users.json")
 
+# Initialize user handling state (called once at startup)
 async def init_user_handling():
     """Initialize user handling state (call once at startup)."""
     await update_stored_variables()
