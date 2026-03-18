@@ -66,6 +66,7 @@ async def update_stored_users(new):
 async def update_user(user):
     global stored_users
 
+    user.recalculate_luck()
     await stored_users.update_user(user.id, user)
     
 # DO NOT run initialization at import time. Call `init_user_handling()` from startup.

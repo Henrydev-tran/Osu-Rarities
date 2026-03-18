@@ -23,7 +23,7 @@ from probabilitycalc import *
 from math import ceil
 from userutils import xp_to_next_level
 
-from item import SHARDS_BY_ID, SHARD_CORE_RECIPES, ALL_RECIPES, ITEMS_BY_ID, SHOP_ITEMS
+from item import SHARDS_BY_ID, SHARD_CORE_RECIPES, ALL_RECIPES, ITEMS_BY_ID, SHOP_ITEMS, PERIPHERAL_TYPES
 
 import datetime
 
@@ -48,6 +48,14 @@ async def on_ready():
     )
 
     print(f"Bot ready as {client.user}")
+    
+@client.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        await ctx.message.reply("Command not found. Use o!help(WIP) to check available commands.")
+    else:
+        await ctx.message.reply("An error occurred while processing the command.")
+        print(f"Error in command '{ctx.command}': {error}")
 
 active_views = {}
 
@@ -94,6 +102,53 @@ async def xp_bar(current_xp, xp_needed, length=10):
 
     return "🟩" * filled + "⬛" * (length - filled)
 
+# Flattens a dict of item categories into a single list of items for pagination
+async def flatten_items(items_dict):
+    """
+    Turns:
+    {"Shards": {"Common": Shard, "Uncommon": Shard}}
+    into:
+    [Shard, Shard]
+    """
+    items = []
+
+    for category, category_items in items_dict.items():
+        for item in category_items.values():
+            items.append(item)
+
+    return items
+
+# Like flatten_items but for a specific category, returns list of items in that category or empty list if category not found
+def flatten_category(items_dict, category: str):
+    """
+    {"Shards": {"Common": Shard, "Uncommon": Shard}}
+    → [Shard, Shard]
+    """
+    category_items = items_dict.get(category, {})
+    return list(category_items.values())
+
+# Flattens a dict of item categories each containing lists of items into a single list of items for pagination
+def flatten_item_lists(items_dict):
+    """
+    {"Peripherals": ListOfItems, "Consumables": ListOfItems}
+    into
+    [Item, Item, Item, Item]
+    """
+    itemlists = []
+    items = []
+    for category_items in items_dict.values():
+        itemlists.append(category_items)
+        
+    for i in itemlists:
+        for y in i:
+            items.append(y)
+            
+    return items
+
+# Returns the index of a shard rarity for sorting purposes, higher means rarer
+def shard_rarity_index(rarity: str) -> int:
+    return SHARD_RANK.get(rarity, 0)
+
 # Class displays maps in a paging system and sorting
 class MapPaginator(discord.ui.View):
     def __init__(self, maps, username, author: discord.User, per_page=6):
@@ -136,7 +191,7 @@ class MapPaginator(discord.ui.View):
         for m in self.pages[self.index]:
             difficulties = "\n".join(
                 f"{get_star_emoji(d['star_rating'])} "
-                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity 1 in {format_number(d['rarity'])}) -- ID: {d['id']} -- # {d["duplicates"]}"
+                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity 1 in {format_number(d['rarity'])}) -- ID: {d['id']} -- # {d['duplicates']}"
                 for d in m["difficulties"]
             )
 
@@ -295,15 +350,148 @@ class CraftCategorySelect(discord.ui.Select):
             view=view
         )         
 
+class ShopModal(discord.ui.Modal):
+    def __init__(self, view):
+        super().__init__(title="Choose a shop item (1–5)")
+        self.view = view
+        
+        self.number = discord.ui.TextInput(
+            label="Enter a number from 1 to 5",
+            placeholder="1-5",
+            min_length=1,
+            max_length=1
+        )
+        
+        self.add_item(self.number)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        value = self.number.value
+
+        if value not in ["1", "2", "3", "4", "5"]:
+            await interaction.response.send_message(
+                "❌ Invalid number. Choose 1–5.", ephemeral=True
+            )
+            self.view.disable_view()
+            return
+        
+        await interaction.response.defer()
+        
+        await self.view.process_buy_interaction(interaction, int(value))
+
 # Class displays shop items in a paging system (WIP)
 class ShopView(discord.ui.View):
     def __init__(self, user, author: discord.User, per_page=5):
         super().__init__(timeout=120)
         self.user = user
         self.author_id = author.id
-        self.items = SHOP_ITEMS[:]
-        self.pages = chunk_list(self.items, per_page)
+        self.items = SHOP_ITEMS
+        self.selectedcategory = "Peripherals"
+        self.per_page = per_page
+        self.pages = chunk_list(self.items[self.selectedcategory], self.per_page)
         self.index = 0
+        
+        self.add_item(self.ShopCategorySelect(self))
+        
+    def disable_view(self):
+        for item in self.children:
+            item.disabled = True
+        self.stop()
+        
+    async def make_embed(self):
+        embed = discord.Embed(
+            title="Shop",
+            color=discord.Color.purple()
+        )
+
+        for index, item in enumerate(self.pages[self.index]):
+            description = (
+                f"{item.description}\n"
+                f"*{item.function}*\n"
+            )
+            
+            name = f"🔹 - {index + 1} - {item.name} - {item.value} PP"
+            
+            if getattr(item, 'type', None) == 'GearPeripheral':
+                if self.user.find_item_by_id(getattr(item, 'id', None)):
+                    name = f"❌ {item.name} - Owned"
+                    description = "*You already own this item and cannot purchase it again.*"
+                    
+            if self.user.pp < item.value:
+                name = f"❌ ~~{item.name} - {item.value} PP~~"
+                description = (
+                f"~~{item.description}~~\n"
+                f"~~*{item.function}*~~\n"
+                "*You don't have enough PP to buy this item.*"
+                )
+            
+            embed.add_field(
+                name=name,
+                value=description,
+                inline=False
+            )
+
+        embed.set_footer(text=f"Page {self.index + 1}/{len(self.pages)}")
+        return embed
+    
+    async def update_buttons(self):
+        pass
+    
+    @discord.ui.button(label="Buy", style=discord.ButtonStyle.success)
+    async def buy(self, interaction, button):
+        await interaction.response.send_modal(ShopModal(self))
+        
+    async def process_buy_interaction(self, interaction, number):
+        if number is None:
+            await interaction.message.reply(
+                "❌ No item selected.", mention_author=False
+            )
+            return
+        
+        index = number - 1
+        if index < 0 or index >= len(self.pages[self.index]):
+            await interaction.message.reply(
+                "❌ Invalid item number.", mention_author=False
+            )
+            return
+        
+        item = self.pages[self.index][index]
+        
+        if getattr(item, 'type', None) in ['Gear', 'GearPeripheral'] and self.user.find_item_by_id(getattr(item, 'id', None)):
+            await interaction.message.reply(
+                "❌ You already own this item and cannot purchase it again.", mention_author=False
+            )
+            return
+        
+        if self.user.pp < item.value:
+            await interaction.message.reply(
+                "❌ You don't have enough PP to buy this item.", mention_author=False
+            )
+            return
+        
+        await self.user.change_pp(-item.value)
+        self.user.add_item(item, item.type)
+        
+        await update_user(self.user)
+        
+        await interaction.message.reply(f"You bought {item.name} for {item.value} PP!")
+    
+    @discord.ui.button(label="◀️", style=discord.ButtonStyle.secondary)
+    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index > 0:
+            self.index -= 1
+            await interaction.response.edit_message(embed=await self.make_embed(), view=self)
+            
+        else:
+            await interaction.response.edit_message(embed=await self.make_embed(), view=self)
+            
+    @discord.ui.button(label="▶️", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index < len(self.pages) - 1:
+            self.index += 1
+            await interaction.response.edit_message(embed=await self.make_embed(), view=self)
+            
+        else:
+            await interaction.response.edit_message(embed=await self.make_embed(), view=self)
  
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
@@ -313,6 +501,143 @@ class ShopView(discord.ui.View):
             )
             return False
         return True
+    
+    class ShopCategorySelect(discord.ui.Select):
+        def __init__(self, view):
+            self.shopview = view
+            options = [
+                discord.SelectOption(label=category, value=category)
+                for category in SHOP_ITEMS.keys()
+            ]
+            super().__init__(placeholder="Select category...", options=options)
+        
+        async def callback(self, interaction):
+            category = self.values[0]
+            self.shopview.selectedcategory = category
+            self.shopview.items = SHOP_ITEMS.get(category, [])
+            self.shopview.pages = chunk_list(self.shopview.items, self.shopview.per_page)
+            self.shopview.index = 0
+            
+            await interaction.response.edit_message(embed=await self.shopview.make_embed(), view=self.shopview)
+
+# View for equipment menu (WIP)
+class EquipmentView(discord.ui.View):
+    def __init__(self, user, author: discord.User):
+        super().__init__(timeout=120)
+        self.user = user
+        self.author_id = author.id
+        self.equipped_items = {peripheral_type: None for peripheral_type in PERIPHERAL_TYPES}
+        
+        self.add_item(self.PeripheralSelect(self))
+        
+    async def update_equipped_items(self):
+        for peripheral_type in PERIPHERAL_TYPES:
+            equipped = None
+            for item in self.user.items.get("GearPeripheral", {}).values():
+                if getattr(item, 'peripheraltype', None) == peripheral_type and getattr(item, 'equipped', False):
+                    equipped = item
+                    break
+            self.equipped_items[peripheral_type] = equipped
+        
+    async def make_embed(self):
+        await self.update_equipped_items()
+        
+        embed = discord.Embed(
+            title="Equipment",
+            color=discord.Color.red()
+        )
+
+        for peripheral_type in PERIPHERAL_TYPES:
+            equipped = self.equipped_items.get(peripheral_type)
+            if equipped:
+                name = f"✅ {peripheral_type}: {equipped.name}"
+                description = equipped.description
+            else:
+                name = f"❌ {peripheral_type}: None"
+                description = "No item equipped in this slot."
+
+            embed.add_field(
+                name=name,
+                value=description,
+                inline=False
+            )
+            
+        for item in self.children:
+            if isinstance(item, discord.ui.Select):
+                self.remove_item(item)
+        
+        self.add_item(self.PeripheralSelect(self))
+
+        return embed
+    
+    async def show_available_equipment(self, interaction, peripheral_type):
+        available = [
+            item for item in self.user.items.get("GearPeripheral", {}).values()
+            if getattr(item, 'peripheraltype', None) == peripheral_type
+        ]
+
+        if not available:
+            await interaction.response.send_message(
+                f"You have no {peripheral_type} peripherals to equip.",
+                ephemeral=True
+            )
+            return
+        
+        embed = discord.Embed(
+            title=f"Available {peripheral_type} Peripherals",
+            color=discord.Color.orange()
+        )
+        
+        for item in available:
+            name = f"{item.name} (Luck +{item.luckincrease}, ×{item.luckmultiplier})"
+            description = item.description
+            embed.add_field(name=name, value=description, inline=False)
+            
+        for item in self.children:
+            if isinstance(item, discord.ui.Select):
+                self.remove_item(item)
+        
+        self.add_item(self.PeripheralCategorySelect(self, available))
+        self.add_item(self.PeripheralSelect(self))
+            
+        await interaction.response.edit_message(embed=embed, view=self)
+        
+    class PeripheralCategorySelect(discord.ui.Select):
+        def __init__(self, view, available):
+            self.equipmentview = view
+            options = [
+                discord.SelectOption(label=item.name, value=item.name)
+                for item in available
+            ]
+            super().__init__(placeholder="Select item to equip.", options=options)
+            
+        async def callback(self, interaction):
+            equipped_name = self.values[0]
+            for item in self.equipmentview.user.items.get("GearPeripheral", {}).values():
+                item.equipped = False
+                
+                if item.name == equipped_name:
+                    item.equipped = True
+                    break
+                
+            await update_user(self.equipmentview.user)
+            await self.equipmentview.update_equipped_items()
+            
+            await interaction.response.edit_message(embed=await self.equipmentview.make_embed(), view=self.equipmentview)
+        
+    class PeripheralSelect(discord.ui.Select):
+        def __init__(self, view):
+            self.equipmentview = view
+            options = [
+                discord.SelectOption(label=peripheral_type, value=peripheral_type)
+                for peripheral_type in PERIPHERAL_TYPES
+            ]
+            super().__init__(placeholder="Select peripheral type to modify.", options=options)
+            
+        async def callback(self, interaction):
+            peripheral_type = self.values[0]
+            
+            await self.equipmentview.show_available_equipment(interaction, peripheral_type)
 
 # Class for crafting menu, includes category and recipe dropdowns and crafting buttons
 # When I built this, I was barely awake on like 2 hours of sleep and I have no recollection of ever writing it. 
@@ -627,40 +952,11 @@ class CraftingView(discord.ui.View):
             return False
         return True
 
-# Flattens a dict of item categories into a single list of items for pagination
-async def flatten_items(items_dict):
-    """
-    Turns:
-    {"Shards": {"Common": Shard, "Uncommon": Shard}}
-    into:
-    [Shard, Shard]
-    """
-    items = []
-
-    for category, category_items in items_dict.items():
-        for item in category_items.values():
-            items.append(item)
-
-    return items
-
-# Like flatten_items but for a specific category, returns list of items in that category or empty list if category not found
-def flatten_category(items_dict, category: str):
-    """
-    {"Shards": {"Common": Shard, "Uncommon": Shard}}
-    → [Shard, Shard]
-    """
-    category_items = items_dict.get(category, {})
-    return list(category_items.values())
-
-# Returns the index of a shard rarity for sorting purposes, higher means rarer
-def shard_rarity_index(rarity: str) -> int:
-    return SHARD_RANK.get(rarity, 0)
-
 # Displays a user's inventory in a paginated embed with category selection
 class ItemPaginator(discord.ui.View):
     def __init__(self, user_items, username, author: discord.User, per_page=8):
         super().__init__(timeout=120)
-        self.user_items = items
+        self.user_items = user_items
         self.username = username
         self.author_id = author.id
         self.per_page = per_page
@@ -668,12 +964,11 @@ class ItemPaginator(discord.ui.View):
         self.current_category = "Shards"
 
         # Initial load
-        self.items = flatten_category(user_items, "Shards")
-        print(self.items)
+        self.items = flatten_category(self.user_items, "Shards")
         self.items.sort(key=lambda i: SHARD_RANK.get(i.shardrarity, 0))
         self.pages = chunk_list(self.items, per_page)
 
-        self.add_item(ItemCategorySelect(user_items, self))
+        self.add_item(ItemCategorySelect(self.user_items, self))
 
     def make_embed(self):
         embed = discord.Embed(
@@ -690,8 +985,8 @@ class ItemPaginator(discord.ui.View):
                 embed.add_field(
                     name=f"🔹 {item.name} ×{item.duplicates}",
                     value=(
-                        f"**Shard Rarity:** {item.shardrarity}\n"
                         f"{item.function}\n"
+                        f"**Shard Rarity:** {item.shardrarity}\n"
                         f"**Value:** {item.value}\n"
                         f"**Effect:** {item.description}"
                     ),
@@ -700,19 +995,31 @@ class ItemPaginator(discord.ui.View):
 
             else:
                 # If this is Gear, include luck stats
-                if getattr(item, 'type', None) == 'Gear':
+                if getattr(item, 'type', None) in 'Gear':
                     value_text = (
-                        f"**Rarity:** {item.rarity}\n"
                         f"{item.function}\n"
+                        f"**Rarity:** {item.rarity}\n"
                         f"**Value:** {item.value}\n"
                         f"**Luck Increase:** {getattr(item, 'luckincrease', 'N/A')}\n"
                         f"**Luck Multiplier:** {getattr(item, 'luckmultiplier', 'N/A')}\n"
                         f"**Description:** {item.description}"
-                    )
+                    )   
+                    
+                if getattr(item, 'type', None) in 'GearPeripheral':
+                    value_text = (
+                        f"{item.function}\n"
+                        f"**Rarity:** {item.rarity}\n"
+                        f"**Value:** {item.value}\n"
+                        f"**Luck Increase:** {getattr(item, 'luckincrease', 'N/A')}\n"
+                        f"**Luck Multiplier:** {getattr(item, 'luckmultiplier', 'N/A')}\n"
+                        f"**Description:** {item.description}\n"
+                        f"**Equipped:** {'Yes' if item.equipped else 'No'}"
+                    )   
+                    
                 else:
                     value_text = (
-                        f"**Rarity:** {item.rarity}\n"
                         f"{item.function}\n"
+                        f"**Rarity:** {item.rarity}\n"
                         f"**Value:** {item.value}\n"
                         f"**Description:** {item.description}"
                     )
@@ -816,7 +1123,7 @@ class SellingPaginator(discord.ui.View):
         for m in self.pages[self.index]:
             difficulties = "\n".join(
                 f"{get_star_emoji(d['star_rating'])} "
-                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity 1 in {format_number(d['rarity'])}) -- ID: {d['id']} -- # {d["duplicates"]}"
+                f"- {d['difficulty_name']} ⭐ {d['star_rating']} (rarity 1 in {format_number(d['rarity'])}) -- ID: {d['id']} -- # {d['duplicates']}"
                 for d in m["difficulties"]
             )
 
@@ -1113,11 +1420,11 @@ async def loadbmsintodatabase(ctx, msid):
             bms = json_object[str(msid)]
             
             
-            await ctx.message.reply(f"Beatmap {bms["title"]} of ID {bms["id"]} has been loaded into the database.")
+            await ctx.message.reply(f"Beatmap {bms['title']} of ID {bms['id']} has been loaded into the database.")
         else:
             bms = json_object[str(msid)]
             
-            await ctx.message.reply(f"Beatmap {bms["title"]} of ID {bms["id"]} has already been loaded.")
+            await ctx.message.reply(f"Beatmap {bms['title']} of ID {bms['id']} has already been loaded.")
             return
         
         return
@@ -1171,6 +1478,19 @@ async def loadmanypages(ctx, num):
     
     await ctx.message.reply("You do not have the permission to use this command.")  
 
+@client.command("setpp")
+async def setpp(ctx, pp):
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+        userdata = await login(ctx.author.id)
+        await userdata.edit_pp(int(pp))
+        await update_user(userdata)
+        
+        await ctx.message.reply(f"PP set to {pp}.")
+        
+        return
+    
+    await ctx.message.reply("You do not have the permission to use this command.")
+
 # Sell a map from user's inventory
 @client.command("sellmaps")
 async def sellmaps(ctx, id = None):
@@ -1221,8 +1541,8 @@ async def balance(ctx):
     await ctx.message.reply(f"You currently have {format_number(userdata.pp)} PP.")
 
 # Check user's items
-@client.command("items")
-async def items(ctx):
+@client.command("inventory")
+async def inventory(ctx):
     username = ctx.author.display_name
     userdata = await login(ctx.author.id)
     raw_items = userdata.items 
@@ -1347,9 +1667,9 @@ async def getmap(ctx, id, bmid, amount=1):
             if i["id"] == int(bmid):
                 result = i
         
-        embed = discord.Embed(title=f"You rolled {result["title"]}[{result["difficulty_name"]}]! (1 in {format_number(result["rarity"])})", description=f"Star Rating: {result["star_rating"]} ⭐", color=await get_star_color(result["star_rating"]), timestamp=datetime.datetime.now())
-        embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{res["id"]}/covers/cover.jpg")
-        embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{res["id"]}l.jpg")
+        embed = discord.Embed(title=f"You rolled {result['title']}[{result['difficulty_name']}]! (1 in {format_number(result['rarity'])})", description=f"Star Rating: {result['star_rating']} ⭐", color=await get_star_color(result['star_rating']), timestamp=datetime.datetime.now())
+        embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{res['id']}/covers/cover.jpg")
+        embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{res['id']}l.jpg")
         
         map_result = await Dict_to_BeatmapDiff(result)
         ubmd = User_BMD_Object(map_result.sr, map_result.parent_id, map_result.id, map_result.title, map_result.artist, map_result.difficulty_name, amount)
@@ -1401,9 +1721,9 @@ async def roll_random(ctx):
         
         result = await get_random_map(luck_mult)
         
-        embed = discord.Embed(title=f"You rolled {result["title"]}[{result["difficulty_name"]}]! (1 in {format_number(result["rarity"])})", description=f"Star Rating: {result["star_rating"]} ⭐", color=await get_star_color(result["star_rating"]), timestamp=datetime.datetime.now())
-        embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{result["id"]}/covers/cover.jpg")
-        embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{result["id"]}l.jpg")
+        embed = discord.Embed(title=f"You rolled {result['title']}[{result['difficulty_name']}]! (1 in {format_number(result['rarity'])})", description=f"Star Rating: {result['star_rating']} ⭐", color=await get_star_color(result['star_rating']), timestamp=datetime.datetime.now())
+        embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{result['id']}/covers/cover.jpg")
+        embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{result['id']}l.jpg")
         
         map_result = await Dict_to_BeatmapDiff(result)
         ubmd = User_BMD_Object(map_result.sr, map_result.parent_id, map_result.id, map_result.title, map_result.artist, map_result.difficulty_name)
@@ -1571,6 +1891,54 @@ help - Shows this message.
 @client.command("shop")
 async def shop(ctx):
     userdata = await login(ctx.author.id)
+    
+    if ctx.author.id in active_views:
+        msg, view = active_views.pop(ctx.author.id)
+
+        for child in view.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+
+        try:
+            await msg.edit(view=view)
+        except discord.NotFound:
+            pass
+        
+        await ctx.reply("Your previous menu was disabled.", mention_author=False)
+    
+    shopView = ShopView(
+        user=userdata,
+        author=ctx.author
+    )
+    msg = await ctx.send(embed=await shopView.make_embed(), view=shopView)
+    
+    active_views[ctx.author.id] = (msg, shopView)
+    
+@client.command("equipment")
+async def equipment(ctx):
+    userdata = await login(ctx.author.id)
+    
+    if ctx.author.id in active_views:
+        msg, view = active_views.pop(ctx.author.id)
+
+        for child in view.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+
+        try:
+            await msg.edit(view=view)
+        except discord.NotFound:
+            pass
+        
+        await ctx.reply("Your previous menu was disabled.", mention_author=False)
+    
+    equipmentView = EquipmentView(
+        user=userdata,
+        author=ctx.author
+    )
+    msg = await ctx.send(embed=await equipmentView.make_embed(), view=equipmentView)
+    
+    active_views[ctx.author.id] = (msg, equipmentView)
 
 # Crafting command
 # More items soon
@@ -1676,9 +2044,8 @@ async def t1(ctx, id):
     await ctx.message.reply(await userdata.count_item_by_id(id))
         
 # Inventory command to check user's maps
-# Pending command change as o!items and o!inventory is confusing, maybe o!maps or something like that
-@client.command("inventory")
-async def inventory(ctx, id = None):
+@client.command("maps")
+async def maps(ctx, id = None):
     userid = ctx.author.id
     
     if userid in active_views:

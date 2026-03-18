@@ -62,12 +62,12 @@ class User:
             except:    
                 specialitem[item.id] = item
                 
-        if type == "Gear":
-            gear = self.items.setdefault("Gear", {})
-            # enforce one-per-type cap for Beatmap Charms (Gear)
+        if type == "Gear" or type == "GearPeripheral":
+            gear = self.items.setdefault(type, {})
+            # enforce one-per-type cap for Gears and Gear Peripherals by treating duplicates as at most 1
             existing = gear.get(item.id)
             if existing:
-                # already have this charm type; cap at 1 (no stacking)
+                # already have this Gear type; cap at 1 (no stacking)
                 existing.duplicates = 1
             else:
                 item.duplicates = 1
@@ -94,8 +94,7 @@ class User:
         
         peripheralitems = self.items.get("GearPeripheral", {})
         equipped_peripherals = [item for item in peripheralitems.values() if getattr(item, 'equipped', False)]
-        
-        gear_items.extend(equipped_peripherals)
+        gear_items.update({item.id: item for item in equipped_peripherals})
         
         for gear in gear_items.values():
             # treat duplicates as at most 1 to enforce one-per-type behavior
@@ -109,13 +108,13 @@ class User:
                 
     def remove_item_by_id(self, id, amount):
         obj = self.find_item_by_id(id)
-        
-        obj.duplicates -= amount
+        if obj is not None:
+            obj.duplicates -= amount
         
     def add_item_by_id(self, id, amount):
         obj = self.find_item_by_id(id)
-        
-        obj.duplicates += amount
+        if obj is not None:
+            obj.duplicates += amount
     
     def count_item_by_id(self, id):
         # Search all item categories and return the duplicates for the matching item id
