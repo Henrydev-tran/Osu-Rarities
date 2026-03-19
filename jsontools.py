@@ -6,6 +6,7 @@ import asyncio
 import orjson
 import pickle
 import os
+import time
 
 # simple per-file asyncio lock manager to prevent concurrent writes
 _file_locks: dict[str, asyncio.Lock] = {}
@@ -22,22 +23,31 @@ def _get_file_lock(path: str) -> asyncio.Lock:
 async def save_to_json(path, obj):
     lock = _get_file_lock(path)
     async with lock:
-        # write to temp file then atomically replace
         temp_path = path + ".tmp"
-        # dump with json (safe) in thread to avoid blocking
+        cache = path + ".pkl"
+
         data = await asyncio.to_thread(json.dumps, obj)
+
         async with aiofiles.open(temp_path, "w") as file:
             await file.write(data)
 
-        # atomic replace
         await asyncio.to_thread(os.replace, temp_path, path)
+
+        # update cache too
+        def _dump_pickle():
+            with open(cache, "wb") as fh:
+                pickle.dump(obj, fh)
+
+        await asyncio.to_thread(_dump_pickle)
 
 # Builds a dict of Beatmap objects from a dict of json data
 def build_maps(maps_json):
-    return {
-        k: Dict_to_Beatmap(v)
-        for k, v in maps_json.items()
-    }
+    maps = {}
+    
+    for k, v in maps_json.items():
+        maps[k] = Dict_to_Beatmap(v)
+        
+    return maps
         
 # Returns an object from a json path
 async def return_json(path):

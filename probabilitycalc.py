@@ -45,6 +45,8 @@ async def preload_all_luck_tables():
             total_weight = int(await f.read())
 
         luck_tables[luck] = (ranges, total_weight)
+        
+        await asyncio.sleep(0.02) 
 
     print(f"Loaded {len(luck_tables)} luck tables into memory")
 
@@ -220,6 +222,6 @@ async def get_random_map(luck: float = 1.0):
 async def init_probabilitycalc():
     global maps
     start = time.perf_counter()
+    print("loading diffs")
     maps = await load_all_diffs()
-    await preload_all_luck_tables()
-    print(f"Loaded lucktables in {time.perf_counter() - start:.3f}s")
+    print(f"Loaded diffs in {time.perf_counter() - start:.3f}s")

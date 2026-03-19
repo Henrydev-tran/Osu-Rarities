@@ -32,6 +32,10 @@ client.remove_command("help")
 
 _initialized = False
 
+async def heartbeat():
+    while True:
+        await asyncio.sleep(30)
+
 # Loads all the necessary data for the bot to function
 @client.event
 async def on_ready():
@@ -39,23 +43,31 @@ async def on_ready():
     if _initialized:
         return
     _initialized = True
+    
+    asyncio.create_task(heartbeat())  
 
     # Run module initialization concurrently
-    await asyncio.gather(
-        user_handling.init_user_handling(),
-        loadmaps.init_loadmaps(),
-        probabilitycalc.init_probabilitycalc()
-    )
+    print("starting user_handling")
+    await user_handling.init_user_handling()
+    print("done user_handling")
+
+    print("starting loadmaps")
+    await loadmaps.init_loadmaps()
+    print("done loadmaps")
+
+    print("starting probabilitycalc")
+    await probabilitycalc.init_probabilitycalc()
+    print("done probabilitycalc")
 
     print(f"Bot ready as {client.user}")
     
-@client.event
+"""@client.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         await ctx.message.reply("Command not found. Use o!help(WIP) to check available commands.")
     else:
         await ctx.message.reply("An error occurred while processing the command.")
-        print(f"Error in command '{ctx.command}': {error}")
+        print(f"Error in command '{ctx.command}': {error}")"""
 
 active_views = {}
 
@@ -407,6 +419,7 @@ class ShopView(discord.ui.View):
             description = (
                 f"{item.description}\n"
                 f"*{item.function}*\n"
+                f"**ID:** {item.id}"
             )
             
             name = f"🔹 - {index + 1} - {item.name} - {item.value} PP"
@@ -527,6 +540,7 @@ class EquipmentView(discord.ui.View):
         self.user = user
         self.author_id = author.id
         self.equipped_items = {peripheral_type: None for peripheral_type in PERIPHERAL_TYPES}
+        self.selected_peripheral = None
         
         self.add_item(self.PeripheralSelect(self))
         
@@ -590,7 +604,7 @@ class EquipmentView(discord.ui.View):
         
         for item in available:
             name = f"{item.name} (Luck +{item.luckincrease}, ×{item.luckmultiplier})"
-            description = item.description
+            description = f"{item.description}\n**ID:** {item.id}"
             embed.add_field(name=name, value=description, inline=False)
             
         for item in self.children:
@@ -614,6 +628,9 @@ class EquipmentView(discord.ui.View):
         async def callback(self, interaction):
             equipped_name = self.values[0]
             for item in self.equipmentview.user.items.get("GearPeripheral", {}).values():
+                if item.peripheraltype != self.equipmentview.selected_peripheral:
+                    continue
+                
                 item.equipped = False
                 
                 if item.name == equipped_name:
@@ -637,6 +654,7 @@ class EquipmentView(discord.ui.View):
         async def callback(self, interaction):
             peripheral_type = self.values[0]
             
+            self.equipmentview.selected_peripheral = peripheral_type
             await self.equipmentview.show_available_equipment(interaction, peripheral_type)
 
 # Class for crafting menu, includes category and recipe dropdowns and crafting buttons
@@ -781,7 +799,9 @@ class CraftingView(discord.ui.View):
 
         embed.add_field(
             name="Result",
-            value=f"✨ {recipe.result.name}",
+            value=(f"✨ {recipe.result.name}\n"
+                   f"**ID:** {recipe.result.id}"
+            ),
             inline=False
         )
         
@@ -981,54 +1001,13 @@ class ItemPaginator(discord.ui.View):
             return embed
 
         for item in self.pages[self.index]:
-            if isinstance(item, Shard):
-                embed.add_field(
-                    name=f"🔹 {item.name} ×{item.duplicates}",
-                    value=(
-                        f"{item.function}\n"
-                        f"**Shard Rarity:** {item.shardrarity}\n"
-                        f"**Value:** {item.value}\n"
-                        f"**Effect:** {item.description}"
-                    ),
-                    inline=False
+            embed.add_field(
+                name=f"🔹 {item.name} ×{item.duplicates}",
+                value=(
+                    f"{item.function}\n"
+                    f"**ID**: {item.id}"
                 )
-
-            else:
-                # If this is Gear, include luck stats
-                if getattr(item, 'type', None) in 'Gear':
-                    value_text = (
-                        f"{item.function}\n"
-                        f"**Rarity:** {item.rarity}\n"
-                        f"**Value:** {item.value}\n"
-                        f"**Luck Increase:** {getattr(item, 'luckincrease', 'N/A')}\n"
-                        f"**Luck Multiplier:** {getattr(item, 'luckmultiplier', 'N/A')}\n"
-                        f"**Description:** {item.description}"
-                    )   
-                    
-                if getattr(item, 'type', None) in 'GearPeripheral':
-                    value_text = (
-                        f"{item.function}\n"
-                        f"**Rarity:** {item.rarity}\n"
-                        f"**Value:** {item.value}\n"
-                        f"**Luck Increase:** {getattr(item, 'luckincrease', 'N/A')}\n"
-                        f"**Luck Multiplier:** {getattr(item, 'luckmultiplier', 'N/A')}\n"
-                        f"**Description:** {item.description}\n"
-                        f"**Equipped:** {'Yes' if item.equipped else 'No'}"
-                    )   
-                    
-                else:
-                    value_text = (
-                        f"{item.function}\n"
-                        f"**Rarity:** {item.rarity}\n"
-                        f"**Value:** {item.value}\n"
-                        f"**Description:** {item.description}"
-                    )
-
-                embed.add_field(
-                    name=f"{item.name} ×{item.duplicates}",
-                    value=value_text,
-                    inline=False
-                )
+            )
 
         embed.set_footer(text=f"Page {self.index + 1}/{len(self.pages)}")
         return embed
@@ -1551,7 +1530,7 @@ async def inventory(ctx):
         await ctx.message.reply("You have no items.")
         return
 
-    view = ItemPaginator(raw_items, username, per_page=5, author=ctx.author)
+    view = ItemPaginator(raw_items, username, per_page=6, author=ctx.author)
     await ctx.send(embed=view.make_embed(), view=view)
 
 
@@ -1696,7 +1675,7 @@ async def getmap(ctx, id, bmid, amount=1):
 # Set the luck multiplier of the user (dev only)
 @client.command("setluck")
 async def setluck(ctx, luck):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268 or ctx.author.id == 970958596424761366:
+    if ctx.author.id != 718102801242259466 and ctx.author.id != 1177826548729008268 and ctx.author.id != 970958596424761366:
         await ctx.message.reply("You do not have the permission to use this command.")
         return
     
@@ -2020,6 +1999,45 @@ async def lookup(ctx, beatmapid):
     
     embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{map.id}/covers/cover.jpg")
     embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{map.id}l.jpg")
+    
+    await ctx.message.reply(embed=embed)
+    
+@client.command("item")
+async def item(ctx, itemid):
+    userdata = await login(ctx.author.id)
+    
+    try:
+        item = ITEMS_BY_ID[itemid]
+    except:
+        item = None
+    
+    if item == None:
+        await ctx.message.reply("Item not found. You can find item IDs in the shop/crafting menu/inventory.")
+        return
+    
+    embed = discord.Embed(title=f"{item.name} - ID: {itemid}", color=discord.Color.blurple())
+    embed.add_field(name="Type", value=item.type)
+    
+    if item.type == "Shard":
+        embed.add_field(name="Shard Rarity", value=item.shardrarity)
+    else:
+        embed.add_field(name="Rarity", value=item.rarity)
+        
+    embed.add_field(name="Function", value=item.function)
+    embed.add_field(name="Value", value=item.value)
+    
+    if item.type in ("Gear", "GearPeripheral"):
+        embed.add_field(name="Luck Increase", value=item.luckincrease)
+        embed.add_field(name="Luck Multiplier", value=item.luckmultiplier)
+        
+    if item.type == "GearPeripheral":
+        embed.add_field(name="Equipped", value=f"{'Yes' if item.equipped else 'No'}")
+    
+    owned = userdata.count_item_by_id(itemid)
+    
+    embed.add_field(name="Owned", value=owned)
+    
+    embed.add_field(name="Description", value=item.description, inline=False)
     
     await ctx.message.reply(embed=embed)
 

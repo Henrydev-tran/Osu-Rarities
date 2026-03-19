@@ -2,7 +2,7 @@ from loadmaps import find_ubmo, return_json, save_to_json, User_To_Dict, Beatmap
 from jsontools import Dict_To_UBMO, UBMO_To_Dict, Dict_To_Item
 import random
 from raritycalculation import calculatepp
-import math
+import math, asyncio
 from collections import Counter
 from item import SHARDS, STARESSENCE
 import copy
