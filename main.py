@@ -21,20 +21,23 @@ from jsontools import Beatmap_To_Json
 from loadmaps import *
 from probabilitycalc import *
 from math import ceil
+from collections import Counter
 from userutils import xp_to_next_level
 
 from item import SHARDS_BY_ID, SHARD_CORE_RECIPES, ALL_RECIPES, ITEMS_BY_ID, SHOP_ITEMS, PERIPHERAL_TYPES
 
 import datetime
 
-client = commands.Bot(command_prefix='o!', intents=discord.Intents(messages=True, guilds=True, message_content=True))
+client = commands.Bot(command_prefix='o!', intents=discord.Intents(message_content=True, messages=True))
 client.remove_command("help")
 
 _initialized = False
 
 async def heartbeat():
     while True:
-        await asyncio.sleep(30)
+        # Auto save player data every 5 minutes
+        await asyncio.sleep(300)
+        await write_stored_variable()
 
 # Loads all the necessary data for the bot to function
 @client.event
@@ -297,70 +300,7 @@ class ItemCategorySelect(discord.ui.Select):
         await interaction.response.edit_message(
             embed=self.paginator.make_embed(),
             view=self.paginator
-        )
-
-# Dropdown for selecting crafting recipes in recipe menu
-class CraftRecipeSelect(discord.ui.Select):
-    def __init__(self, recipes, selected_recipe_id: str | None):
-        options = []
-
-        for recipe in recipes:
-            options.append(
-                discord.SelectOption(
-                    label=recipe.name,
-                    description=recipe.description[:50],
-                    value=recipe.id,
-                    default=(recipe.id == selected_recipe_id)  # ⭐ key line
-                )
-            )
-
-        super().__init__(
-            placeholder="Select recipe",
-            options=options
-        )
-
-    async def callback(self, interaction):
-        view: CraftingView = self.view
-        view.selected_recipe_id = self.values[0]
-        view.craft_amount = 1  # reset amount on change
-
-        view.refresh_components()
-
-        await interaction.response.edit_message(
-            embed=view.make_embed(),
-            view=view
-        )
-
-# Dropdown for selecting crafting categories in recipe menu
-class CraftCategorySelect(discord.ui.Select):
-    def __init__(self, current_category: str):
-        options = []
-
-        for label, value in [
-            ("Shard Cores", "ShardCores"),
-            ("Beatmap Charms", "BeatmapCharms")
-        ]:
-            options.append(
-                discord.SelectOption(
-                    label=label,
-                    value=value,
-                    default=(value == current_category)
-                )
-            )
-
-        super().__init__(
-            placeholder="Select crafting category",
-            options=options
-        )
-
-    async def callback(self, interaction):
-        view: CraftingView = self.view
-        view.set_category(self.values[0])
-
-        await interaction.response.edit_message(
-            embed=view.make_embed(),
-            view=view
-        )         
+        )    
 
 class ShopModal(discord.ui.Modal):
     def __init__(self, view):
@@ -656,6 +596,331 @@ class EquipmentView(discord.ui.View):
             
             self.equipmentview.selected_peripheral = peripheral_type
             await self.equipmentview.show_available_equipment(interaction, peripheral_type)
+            
+# Dropdown for selecting crafting recipes in recipe menu
+class CraftRecipeSelect(discord.ui.Select):
+    def __init__(self, recipes, selected_recipe_id: str | None):
+        options = []
+
+        for recipe in recipes:
+            options.append(
+                discord.SelectOption(
+                    label=recipe.name,
+                    description=recipe.description[:50],
+                    value=recipe.id,
+                    default=(recipe.id == selected_recipe_id)  # ⭐ key line
+                )
+            )
+
+        super().__init__(
+            placeholder="Select recipe",
+            options=options
+        )
+
+    async def callback(self, interaction):
+        view: CraftingView = self.view
+        view.selected_recipe_id = self.values[0]
+        view.craft_amount = 1  # reset amount on change
+        view.selected_map_ids = []
+
+        view.refresh_components()
+
+        await interaction.response.edit_message(
+            embed=view.make_embed(),
+            view=view
+        )
+
+# Dropdown for selecting crafting categories in recipe menu
+class CraftCategorySelect(discord.ui.Select):
+    def __init__(self, current_category: str):
+        options = []
+
+        for label, value in [
+            ("Shard Cores", "ShardCores"),
+            ("Beatmap Charms", "BeatmapCharms"),
+            ("Tools", "Tools"),
+            ("Essences", "Essences")
+        ]:
+            options.append(
+                discord.SelectOption(
+                    label=label,
+                    value=value,
+                    default=(value == current_category)
+                )
+            )
+
+        super().__init__(
+            placeholder="Select crafting category",
+            options=options
+        )
+
+    async def callback(self, interaction):
+        view: CraftingView = self.view
+        view.set_category(self.values[0])
+
+        await interaction.response.edit_message(
+            embed=view.make_embed(),
+            view=view
+        )     
+        
+class CraftAmountModal(discord.ui.Modal):
+    def __init__(self, recipe, view):
+        super().__init__(title="Enter craft amount")
+        self.view = view
+        self.recipe = recipe
+        
+        self.amount = discord.ui.TextInput(
+            label="Amount to craft",
+            placeholder="Enter a number",
+            min_length=1,
+            max_length=5
+        )
+        
+        self.add_item(self.amount)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            value = int(self.amount.value)
+            if value < 1:
+                raise ValueError
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ Invalid amount. Please enter a positive integer.", ephemeral=True
+            )
+            return
+        
+        view: CraftingView = self.view
+        recipe = self.recipe
+        
+        if recipe is None:
+            await interaction.response.send_message(
+                "❌ No recipe selected.", ephemeral=True
+            )
+            return
+        
+        max_craftable = recipe.max_craftable(view.user)
+        
+        if value > max_craftable:
+            await interaction.response.send_message(
+                f"❌ You can only craft up to {max_craftable} of this item.", ephemeral=True
+            )
+            return
+        
+        view.craft_amount = value
+        view.selected_map_ids = []
+        view.refresh_components()
+        
+        await interaction.response.edit_message(
+            embed=view.make_embed(),
+            view=view
+        )
+
+
+class CraftMapSelectionView(discord.ui.View):
+    def __init__(self, parent_view, recipe, required_count: int, author_id: int, parent_message, per_page: int = 5):
+        super().__init__(timeout=120)
+        self.parent_view = parent_view
+        self.recipe = recipe
+        self.required_count = max(0, required_count)
+        self.author_id = author_id
+        self.parent_message = parent_message
+        self.per_page = per_page
+        self.index = 0
+
+        eligible_lookup = self.parent_view.get_eligible_map_lookup_for_recipe(recipe)
+        eligible_diffs = list(eligible_lookup.values())
+        eligible_diffs.sort(key=lambda d: d.sr, reverse=True)
+
+        self.units = []
+        for diff in eligible_diffs:
+            copies = max(0, int(getattr(diff, "duplicates", 0)))
+            for copy_index in range(copies):
+                self.units.append({
+                    "unit_key": f"{diff.id}:{copy_index + 1}",
+                    "diff_id": diff.id,
+                    "title": diff.title,
+                    "difficulty_name": diff.difficulty_name,
+                    "sr": diff.sr,
+                    "copy_index": copy_index + 1,
+                    "total_copies": copies,
+                })
+
+        self.pages = chunk_list(self.units, self.per_page) if self.units else [[]]
+        self.selected_unit_keys = set()
+        self._preselect_from_parent()
+        self._update_slot_buttons()
+
+    def _preselect_from_parent(self):
+        if not self.parent_view.selected_map_ids:
+            return
+
+        desired_counts = Counter(self.parent_view.selected_map_ids)
+        for unit in self.units:
+            diff_id = unit["diff_id"]
+            if len(self.selected_unit_keys) >= self.required_count:
+                break
+            if desired_counts.get(diff_id, 0) > 0:
+                self.selected_unit_keys.add(unit["unit_key"])
+                desired_counts[diff_id] -= 1
+
+    def selected_count(self) -> int:
+        return len(self.selected_unit_keys)
+
+    def selected_map_ids(self):
+        result = []
+        for unit in self.units:
+            if unit["unit_key"] in self.selected_unit_keys:
+                result.append(unit["diff_id"])
+        return result
+
+    def _update_slot_buttons(self):
+        current_page = self.pages[self.index]
+        slot_buttons = [self.sm1, self.sm2, self.sm3, self.sm4, self.sm5]
+
+        for i, button in enumerate(slot_buttons):
+            if i < len(current_page):
+                unit = current_page[i]
+                button.disabled = False
+                button.style = discord.ButtonStyle.success if unit["unit_key"] in self.selected_unit_keys else discord.ButtonStyle.primary
+            else:
+                button.disabled = True
+                button.style = discord.ButtonStyle.secondary
+
+        self.previous.disabled = self.index == 0
+        self.next.disabled = self.index >= len(self.pages) - 1
+        self.confirm.disabled = self.selected_count() != self.required_count
+
+    def make_embed(self):
+        embed = discord.Embed(
+            title=f"Map Selection - {self.recipe.name}",
+            color=discord.Color.blurple()
+        )
+
+        map_req = getattr(self.recipe, "map_requirement", None)
+        req_text = map_req.format_requirement() if map_req is not None else "No map requirement"
+        embed.description = (
+            f"Select exactly **{self.required_count}** map(s).\n"
+            f"Requirement: **{req_text}**\n"
+            f"Selected: **{self.selected_count()}/{self.required_count}**"
+        )
+
+        current_page = self.pages[self.index]
+        if not current_page:
+            lines = ["No eligible maps in your inventory."]
+        else:
+            lines = []
+            for i, unit in enumerate(current_page, start=1):
+                marker = "✅" if unit["unit_key"] in self.selected_unit_keys else "▫️"
+                copy_text = ""
+                if unit["total_copies"] > 1:
+                    copy_text = f" | Copy {unit['copy_index']}/{unit['total_copies']}"
+
+                lines.append(
+                    f"{marker} {i}. {unit['title']} [{unit['difficulty_name']}] | ⭐ {unit['sr']} | ID: {unit['diff_id']}{copy_text}"
+                )
+
+        embed.add_field(name="Maps", value="\n".join(lines), inline=False)
+        embed.set_footer(text=f"Page {self.index + 1}/{len(self.pages)}")
+        return embed
+
+    async def _toggle_slot(self, interaction: discord.Interaction, slot_index: int):
+        current_page = self.pages[self.index]
+        if slot_index >= len(current_page):
+            self._update_slot_buttons()
+            await interaction.response.edit_message(embed=self.make_embed(), view=self)
+            return
+
+        unit = current_page[slot_index]
+        unit_key = unit["unit_key"]
+
+        if unit_key in self.selected_unit_keys:
+            self.selected_unit_keys.remove(unit_key)
+        else:
+            if self.selected_count() >= self.required_count:
+                await interaction.response.send_message(
+                    f"You can only select {self.required_count} map(s).",
+                    ephemeral=True
+                )
+                return
+
+            self.selected_unit_keys.add(unit_key)
+
+        self._update_slot_buttons()
+        await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    @discord.ui.button(label="1️⃣", style=discord.ButtonStyle.primary)
+    async def sm1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._toggle_slot(interaction, 0)
+
+    @discord.ui.button(label="2️⃣", style=discord.ButtonStyle.primary)
+    async def sm2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._toggle_slot(interaction, 1)
+
+    @discord.ui.button(label="3️⃣", style=discord.ButtonStyle.primary)
+    async def sm3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._toggle_slot(interaction, 2)
+
+    @discord.ui.button(label="4️⃣", style=discord.ButtonStyle.primary)
+    async def sm4(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._toggle_slot(interaction, 3)
+
+    @discord.ui.button(label="5️⃣", style=discord.ButtonStyle.primary)
+    async def sm5(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._toggle_slot(interaction, 4)
+
+    @discord.ui.button(label="◀️", style=discord.ButtonStyle.secondary)
+    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index > 0:
+            self.index -= 1
+        self._update_slot_buttons()
+        await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    @discord.ui.button(label="▶️", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index < len(self.pages) - 1:
+            self.index += 1
+        self._update_slot_buttons()
+        await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    @discord.ui.button(label="Clear", style=discord.ButtonStyle.danger)
+    async def clear(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.selected_unit_keys.clear()
+        self._update_slot_buttons()
+        await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        selected_ids = self.selected_map_ids()
+        ok, message = self.parent_view.validate_selected_maps(self.recipe, selected_ids)
+        if not ok:
+            await interaction.response.send_message(message, ephemeral=True)
+            return
+
+        self.parent_view.selected_map_ids = selected_ids
+        self.parent_view.refresh_components()
+
+        try:
+            await self.parent_message.edit(embed=self.parent_view.make_embed(), view=self.parent_view)
+        except Exception:
+            pass
+
+        try:
+            await interaction.response.defer()
+            await interaction.delete_original_response()
+        except Exception:
+            try:
+                await interaction.message.delete()
+            except Exception:
+                pass
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "❌ This map selection menu isn’t yours.",
+                ephemeral=True
+            )
+            return False
+        return True
 
 # Class for crafting menu, includes category and recipe dropdowns and crafting buttons
 # When I built this, I was barely awake on like 2 hours of sleep and I have no recollection of ever writing it. 
@@ -669,6 +934,7 @@ class CraftingView(discord.ui.View):
         self.category = "ShardCores"
         self.craft_amount = 1
         self.selected_recipe_id = None
+        self.selected_map_ids = []
 
         self.refresh_components()  
         
@@ -676,6 +942,7 @@ class CraftingView(discord.ui.View):
         self.category = category
         self.selected_recipe_id = None
         self.craft_amount = 1
+        self.selected_map_ids = []
         self.refresh_components()
         
     def refresh_components(self):
@@ -697,22 +964,55 @@ class CraftingView(discord.ui.View):
         # buttons
         # determine if selected recipe is Gear (Beatmap Charm)
         recipe = self.get_selected_recipe()
-        is_gear = False
+        is_single = False
         if recipe is not None:
-            is_gear = getattr(recipe.result, 'type', None) == 'Gear'
+            is_single = getattr(recipe.result, 'type', None) in ('Gear', 'GearPeripheral', 'Tool')
 
         # enforce single-quantity for gear
-        if is_gear:
+        if is_single:
             self.craft_amount = 1
 
         # disable +/- when crafting gear since only 1 is allowed
-        self.decrease.disabled = is_gear
-        self.increase.disabled = is_gear
+        self.decrease.disabled = is_single
+        self.increase.disabled = is_single
 
         self.add_item(self.decrease)
         self.add_item(self.increase)
+        self.add_item(self.select_amount)
+        self.select_maps.disabled = recipe is None or getattr(recipe, "map_requirement", None) is None
+        self.add_item(self.select_maps)
         self.add_item(self.craft)
         self.add_item(self.craft_max)
+
+    def get_eligible_map_lookup_for_recipe(self, recipe):
+        map_req = getattr(recipe, "map_requirement", None)
+        if map_req is None:
+            return {}
+
+        return self.user.get_eligible_map_lookup(
+            min_star=map_req.min_star,
+            max_star=map_req.max_star,
+            include_min=map_req.include_min,
+            include_max=map_req.include_max,
+        )
+
+    def validate_selected_maps(self, recipe, selected_ids):
+        map_req = getattr(recipe, "map_requirement", None)
+        if map_req is None:
+            return True, ""
+
+        eligible_lookup = self.get_eligible_map_lookup_for_recipe(recipe)
+        counts = Counter(selected_ids)
+
+        for map_id, amount in counts.items():
+            diff = eligible_lookup.get(map_id)
+            if diff is None:
+                return False, f"Map ID {map_id} does not meet the recipe requirements or is not in your inventory."
+
+            if amount > getattr(diff, "duplicates", 0):
+                return False, f"Map ID {map_id} only has {getattr(diff, 'duplicates', 0)} copies in your inventory."
+
+        return True, ""
 
     def disable_all_components(self):
         """Disable all interactive components in the view (used after crafting)."""
@@ -725,13 +1025,16 @@ class CraftingView(discord.ui.View):
     def get_recipes_for_category(self):
         # Filter available recipes by craftability and prevent showing Gear (charms)
         # recipes the user already owns.
+        # Do not show recipes that have item requirements the user does not meet (e.g. previous charm tier)
         results = []
         for r in ALL_RECIPES.get(self.category, []):
-            if not r.can_craft(self.user):
-                continue
+            # check item requirement
+            if getattr(r, 'item_requirement', None) is not None:
+                if self.user.count_item_by_id(r.item_requirement) == 0:
+                    continue
 
             res = getattr(r, 'result', None)
-            if res is not None and getattr(res, 'type', None) == 'Gear':
+            if res is not None and getattr(res, 'type', None) in ('Gear', 'GearPeripheral', 'Tool'):
                 # if user already has this gear, skip the recipe
                 if self.user.count_item_by_id(getattr(res, 'id', None)) > 0:
                     continue
@@ -788,14 +1091,61 @@ class CraftingView(discord.ui.View):
         
         embed.description = recipe.description
 
+        requirement_lines = []
+        for item_id, amt in recipe.requirements.items():
+            requirement_lines.append(
+                f"🔹 **{amt}× {ITEMS_BY_ID.get(item_id).name if ITEMS_BY_ID.get(item_id) else item_id}** | You Have: {self.user.count_item_by_id(item_id)}"
+            )
+
+        map_req = getattr(recipe, "map_requirement", None)
+        if map_req is not None:
+            eligible_count = self.user.count_eligible_maps(
+                min_star=map_req.min_star,
+                max_star=map_req.max_star,
+                include_min=map_req.include_min,
+                include_max=map_req.include_max,
+            )
+            requirement_lines.append(
+                f"🗺️ **{map_req.format_requirement()}** | Eligible in Inventory: {eligible_count}"
+            )
+
+        if not requirement_lines:
+            requirement_lines.append("No item requirements.")
+
         embed.add_field(
             name="Requirements",
-                value="\n".join(
-                    f"🔹 {amt}× {ITEMS_BY_ID.get(item_id).name if ITEMS_BY_ID.get(item_id) else item_id}"
-                    for item_id, amt in recipe.requirements.items()
-                ),
+                value="\n".join(requirement_lines),
             inline=False
         )
+
+        if map_req is not None:
+            eligible_lookup = self.get_eligible_map_lookup_for_recipe(recipe)
+            eligible_maps = list(eligible_lookup.values())
+            eligible_maps.sort(key=lambda d: d.sr, reverse=True)
+
+            if eligible_maps:
+                preview = "\n".join(
+                    f"• {d.title} [{d.difficulty_name}] | ⭐ {d.sr} | ID: {d.id} | x{d.duplicates}"
+                    for d in eligible_maps[:10]
+                )
+                if len(eligible_maps) > 10:
+                    preview += f"\n... and {len(eligible_maps) - 10} more"
+            else:
+                preview = "No eligible maps in your inventory."
+
+            embed.add_field(
+                name="Eligible Maps",
+                value=preview,
+                inline=False,
+            )
+
+            needed = map_req.amount * self.craft_amount
+            selected = len(self.selected_map_ids)
+            embed.add_field(
+                name="Selected Maps",
+                value=f"{selected}/{needed} selected",
+                inline=False,
+            )
 
         embed.add_field(
             name="Result",
@@ -853,6 +1203,7 @@ class CraftingView(discord.ui.View):
 
         if self.craft_amount > 1:
             self.craft_amount -= 1
+            self.selected_map_ids = []
 
         await interaction.response.edit_message(
             embed=self.make_embed(),
@@ -873,10 +1224,54 @@ class CraftingView(discord.ui.View):
         max_amount = recipe.max_craftable(self.user)
         if self.craft_amount < max_amount:
             self.craft_amount += 1
+            self.selected_map_ids = []
 
         await interaction.response.edit_message(
             embed=self.make_embed(),
             view=self
+        )
+        
+    @discord.ui.button(label="Select Amount", style=discord.ButtonStyle.secondary)  
+    async def select_amount(self, interaction, button):
+        recipe = self.get_selected_recipe()
+        if not recipe:
+            return
+
+        # For Gear recipes, crafting amount is always 1, so no need to show modal
+        if getattr(recipe.result, 'type', None) == 'Gear':
+            await interaction.response.edit_message(embed=self.make_embed(), view=self)
+            return
+
+        modal = CraftAmountModal(recipe, self)
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="Select Maps", style=discord.ButtonStyle.primary)
+    async def select_maps(self, interaction, button):
+        recipe = self.get_selected_recipe()
+        if recipe is None:
+            return
+
+        if getattr(recipe, "map_requirement", None) is None:
+            await interaction.response.send_message(
+                "This recipe does not require maps.",
+                ephemeral=True,
+            )
+            return
+
+        required_count = recipe.map_requirement.amount * self.craft_amount
+        picker_view = CraftMapSelectionView(
+            parent_view=self,
+            recipe=recipe,
+            required_count=required_count,
+            author_id=self.author_id,
+            parent_message=interaction.message,
+            per_page=5,
+        )
+
+        await interaction.response.send_message(
+            embed=picker_view.make_embed(),
+            view=picker_view,
+            ephemeral=True,
         )
         
     @discord.ui.button(label="Craft", style=discord.ButtonStyle.success)
@@ -885,15 +1280,18 @@ class CraftingView(discord.ui.View):
         if not recipe:
             return
 
-        # Prevent crafting Gear (charms) the user already owns
-        if getattr(recipe.result, 'type', None) == 'Gear' and self.user.count_item_by_id(getattr(recipe.result, 'id', None)) > 0:
+        print(getattr(recipe.result, 'type', None))
+        print(self.user.count_item_by_id(getattr(recipe.result, 'id', None)))
+
+        # Prevent crafting limited items the user already owns
+        if getattr(recipe.result, 'type', None) in ('Gear', 'GearPeripheral', 'Tool') and self.user.count_item_by_id(getattr(recipe.result, 'id', None)) > 0:
             return await interaction.response.send_message(
-                "You already own this charm and cannot craft another.",
+                "You already own this item and cannot craft another.",
                 ephemeral=True
             )
 
-        # Enforce single quantity for Gear recipes
-        if getattr(recipe.result, 'type', None) == 'Gear':
+        # Enforce single quantity for limited items
+        if getattr(recipe.result, 'type', None) in ('Gear', 'GearPeripheral', 'Tool'):
             amount_to_craft = 1
         else:
             amount_to_craft = self.craft_amount
@@ -904,7 +1302,26 @@ class CraftingView(discord.ui.View):
                 ephemeral=True
             )
 
-        recipe.consume(self.user, amount_to_craft)
+        selected_map_ids = None
+        map_req = getattr(recipe, "map_requirement", None)
+        if map_req is not None:
+            needed = map_req.amount * amount_to_craft
+            if len(self.selected_map_ids) < needed:
+                return await interaction.response.send_message(
+                    f"Select {needed} eligible map ID(s) first using the Select Maps button.",
+                    ephemeral=True,
+                )
+
+            ok, message = self.validate_selected_maps(recipe, self.selected_map_ids)
+            if not ok:
+                return await interaction.response.send_message(
+                    message,
+                    ephemeral=True,
+                )
+
+            selected_map_ids = self.selected_map_ids[:needed]
+
+        recipe.consume(self.user, amount_to_craft, selected_map_ids=selected_map_ids)
         recipe.give_result(self.user, amount_to_craft)
         
         await interaction.message.reply(
@@ -912,6 +1329,7 @@ class CraftingView(discord.ui.View):
             )
 
         self.craft_amount = 1  # reset after craft
+        self.selected_map_ids = []
         
         await update_user(self.user)
         # Disable the view so the user cannot craft again from the same menu
@@ -929,27 +1347,51 @@ class CraftingView(discord.ui.View):
             return
 
         # Prevent crafting Gear (charms) the user already owns
-        if getattr(recipe.result, 'type', None) == 'Gear' and self.user.count_item_by_id(getattr(recipe.result, 'id', None)) > 0:
+        if getattr(recipe.result, 'type', None) in ('Gear', 'GearPeripheral', 'Tool') and self.user.count_item_by_id(getattr(recipe.result, 'id', None)) > 0:
             return await interaction.response.send_message(
-                "You already own this charm and cannot craft another.",
+                "You already own this item and cannot craft another.",
                 ephemeral=True
             )
 
         # For Gear recipes, craft exactly 1. Otherwise craft max.
-        if getattr(recipe.result, 'type', None) == 'Gear':
+        if getattr(recipe.result, 'type', None) in ('Gear', 'GearPeripheral', 'Tool'):
             amount = 1
         else:
             amount = recipe.max_craftable(self.user)
 
-        if amount == 0:
-            return
+        selected_map_ids = None
+        map_req = getattr(recipe, "map_requirement", None)
+        if map_req is not None:
+            if len(self.selected_map_ids) == 0:
+                return await interaction.response.send_message(
+                    "Select at least one eligible map ID using the Select Maps button.",
+                    ephemeral=True,
+                )
 
-        recipe.consume(self.user, amount)
+            ok, message = self.validate_selected_maps(recipe, self.selected_map_ids)
+            if not ok:
+                return await interaction.response.send_message(
+                    message,
+                    ephemeral=True,
+                )
+
+            selected_limited = len(self.selected_map_ids) // map_req.amount
+            amount = min(amount, selected_limited)
+            selected_map_ids = self.selected_map_ids[: amount * map_req.amount]
+
+        if amount == 0:
+            return await interaction.response.send_message(
+                "No valid craft amount available with the selected maps.",
+                ephemeral=True,
+            )
+
+        recipe.consume(self.user, amount, selected_map_ids=selected_map_ids)
         recipe.give_result(self.user, amount)
         
         await update_user(self.user)
 
         self.craft_amount = 1
+        self.selected_map_ids = []
 
         # Disable the view after crafting to prevent further interaction
         self.disable_all_components()
@@ -962,7 +1404,7 @@ class CraftingView(discord.ui.View):
         await interaction.message.reply(
                 f"Crafted {amount}x {recipe.name}"
             )
-        
+
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
             await interaction.response.send_message(
@@ -1001,13 +1443,23 @@ class ItemPaginator(discord.ui.View):
             return embed
 
         for item in self.pages[self.index]:
-            embed.add_field(
-                name=f"🔹 {item.name} ×{item.duplicates}",
-                value=(
-                    f"{item.function}\n"
-                    f"**ID**: {item.id}"
+            if not item.type in ("Tool"):
+                embed.add_field(
+                    name=f"🔹 {item.name} ×{item.duplicates}",
+                    value=(
+                        f"{item.function}\n"
+                        f"**ID**: {item.id}"
+                    )
                 )
-            )
+                
+            else:
+                embed.add_field(
+                    name=f"🔹 {item.name}",
+                    value=(
+                        f"{item.description}\n"
+                        f"**ID**: {item.id}"
+                    )
+                )
 
         embed.set_footer(text=f"Page {self.index + 1}/{len(self.pages)}")
         return embed
@@ -1685,10 +2137,11 @@ async def setluck(ctx, luck):
         return
     
     userdata = await login(ctx.author.id)
-    userdata.luck_mult = int(luck)
+    userdata.dev_luck_base = int(luck)
+    userdata.recalculate_luck()
     
     await update_user(userdata)
-    await ctx.message.reply(f"Set luck to {format_number(int(luck))}x.")
+    await ctx.message.reply(f"Set base luck to {format_number(int(luck))}x. Gear multipliers now apply on top of this value.")
     
 # Roll a beatmap
 @client.command("roll")
@@ -2119,6 +2572,50 @@ async def recalculate_rarities(ctx):
         
         return
         
+    await ctx.message.reply("You do not have the permission to use this command.")
+
+# Developer command to give a specific item to themselves
+@client.command("give_dev")
+async def give_dev(ctx, itemid, amount):
+    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+        userdata = await login(ctx.author.id)
+        
+        # If user inputs an array of items, add all items in the array to inventory. Example: o!give_dev [item1,item2,item3] 1
+        if itemid.startswith("[") and itemid.endswith("]"):
+            itemids = itemid[1:-1].split(",")
+            for id in itemids:
+                item = copy.deepcopy(ITEMS_BY_ID.get(id.strip()))
+                
+                if not item:
+                    await ctx.message.reply(f"Item with ID {id.strip()} not found. Check item IDs in the shop/crafting menu/inventory.")
+                    continue
+                
+                item.duplicates = int(amount)
+                
+                userdata.add_item(item, item.type)
+            
+            await update_user(userdata)
+            
+            await ctx.message.reply(f"Gave {format_number(int(amount))}x of each item: {', '.join(id.strip() for id in itemids)}.")
+            
+            return
+        
+        item = copy.deepcopy(ITEMS_BY_ID.get(itemid))
+        
+        if not item:
+            await ctx.message.reply("Item not found. Check item IDs in the shop/crafting menu/inventory.")
+            return
+        
+        item.duplicates = int(amount)
+        
+        userdata.add_item(item, item.type)
+        
+        await update_user(userdata)
+        
+        await ctx.message.reply(f"Gave {format_number(int(amount))}x {item.name}.")
+        
+        return
+    
     await ctx.message.reply("You do not have the permission to use this command.")
 
 # Test the embed function (temporary, to be removed soon)

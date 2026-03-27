@@ -1,7 +1,7 @@
 from beatmap import *
 import aiofiles
 import json
-from item import Shard, ShardCore, Special, Gear, Gear_Peripheral
+from item import Shard, ShardCore, Special, Gear, Gear_Peripheral, Tool
 import asyncio
 import orjson
 import pickle
@@ -140,6 +140,7 @@ async def User_To_Dict(user):
         "rank": user.rank,
         "roll_max": user.roll_max,
         "luck_mult": user.luck_mult,
+        "dev_luck_base": getattr(user, "dev_luck_base", 1),
         "xp": user.xp,
         "level": user.level
     }
@@ -254,6 +255,16 @@ async def Item_To_Dict(item):
             "equipped": item.equipped
         }
         
+    if item.type == "Tool":
+        result = {
+            "rarity": item.rarity,
+            "name": item.name,
+            "function": item.function,
+            "id": item.id,
+            "description": item.description,
+            "type": item.type
+        }
+        
     return result
 
 # Returns an Item object from a given dict
@@ -322,6 +333,14 @@ async def Dict_To_Item(item):
                       item.get("luckmultiplier", 1),
                       item.get("peripheraltype", "Unknown"),
                       item.get("equipped", False))
+        
+    if item["type"] == "Tool":
+        result = Tool(item["rarity"],
+                      item["name"],
+                      item["function"],
+                      item["id"],
+                      item["description"],
+                      item["type"])
         
     return result
 

@@ -9,7 +9,7 @@ import copy
 
 # User class for...users obviously why do you even need this comment
 class User:
-    def __init__(self, id, maps=[], items={}, pp=0, rolls_amount=25, rank=0, roll_max=25, luck_mult=1, xp=0, level=1):
+    def __init__(self, id, maps=[], items={}, pp=0, rolls_amount=25, rank=0, roll_max=25, luck_mult=1, xp=0, level=1, dev_luck_base=1):
         self.id = id
         self.maps = maps
         self.items = items
@@ -20,6 +20,7 @@ class User:
         self.luck_mult = luck_mult
         self.xp = xp
         self.level = level
+        self.dev_luck_base = dev_luck_base
     
     async def add_map(self, map):
         for i in self.maps:
@@ -54,13 +55,21 @@ class User:
             except:
                 shardcores[item.corerarity] = item  
                 
-        if type == "Special":
-            specialitem = self.items.setdefault("Special", {})
+        if type in ("Special"):
+            specialitem = self.items.setdefault(type, {})
             
             try:
                 specialitem[item.id].duplicates += item.duplicates
             except:    
                 specialitem[item.id] = item
+                
+        if type == "Tool":
+            tools = self.items.setdefault("Tool", {})
+            
+            try:
+                tools[item.id].duplicates += item.duplicates
+            except:    
+                tools[item.id] = item
                 
         if type == "Gear" or type == "GearPeripheral":
             gear = self.items.setdefault(type, {})
@@ -77,17 +86,17 @@ class User:
                 self.recalculate_luck()
             except Exception:
                 pass
-
+            
     def recalculate_luck(self):
         """Recalculate player's luck multiplier from equipped Gear items.
 
         Formula applied per gear instance:
             playerluck = playerluck * luckmultiplier + luckincrease
 
-        The calculation starts from base 1.0 and applies each gear item 'duplicates' times.
+        The calculation starts from the developer luck base and applies each gear item 'duplicates' times.
         The resulting value is stored in `self.luck_mult` and returned.
         """
-        base_luck = 1.0
+        base_luck = float(getattr(self, "dev_luck_base", 1.0))
         playerluck = base_luck
 
         gear_items = self.items.get("Gear", {})
@@ -110,6 +119,75 @@ class User:
         obj = self.find_item_by_id(id)
         if obj is not None:
             obj.duplicates -= amount
+
+    def get_eligible_map_lookup(self, min_star=None, max_star=None, include_min=True, include_max=True):
+        """Return a lookup of map difficulty id -> owned User_BMD_Object for matching star filters."""
+        result = {}
+
+        for ubmo in self.maps:
+            for diff in ubmo.difficulties:
+                sr = getattr(diff, "sr", None)
+                if sr is None:
+                    continue
+
+                if min_star is not None:
+                    if include_min:
+                        if sr < min_star:
+                            continue
+                    else:
+                        if sr <= min_star:
+                            continue
+
+                if max_star is not None:
+                    if include_max:
+                        if sr > max_star:
+                            continue
+                    else:
+                        if sr >= max_star:
+                            continue
+
+                result[diff.id] = diff
+
+        return result
+
+    def count_eligible_maps(self, min_star=None, max_star=None, include_min=True, include_max=True):
+        lookup = self.get_eligible_map_lookup(
+            min_star=min_star,
+            max_star=max_star,
+            include_min=include_min,
+            include_max=include_max,
+        )
+        return sum(getattr(diff, "duplicates", 0) for diff in lookup.values())
+
+    def remove_maps_by_id_list(self, diff_ids):
+        """Consume owned map difficulties by id. Repeated ids consume duplicates."""
+        counts = Counter(diff_ids)
+
+        # Validate ownership before mutating state
+        owned_lookup = self.get_eligible_map_lookup()
+        for diff_id, amount in counts.items():
+            owned_diff = owned_lookup.get(diff_id)
+            owned_amount = getattr(owned_diff, "duplicates", 0) if owned_diff is not None else 0
+            if owned_amount < amount:
+                raise ValueError(f"Not enough copies of map id {diff_id} to consume.")
+
+        for ubmo in self.maps:
+            remaining_difficulties = []
+            for diff in ubmo.difficulties:
+                to_remove = counts.get(diff.id, 0)
+                if to_remove <= 0:
+                    remaining_difficulties.append(diff)
+                    continue
+
+                diff.duplicates -= to_remove
+                counts[diff.id] = 0
+
+                if diff.duplicates > 0:
+                    remaining_difficulties.append(diff)
+
+            ubmo.difficulties = remaining_difficulties
+
+        self.maps = [ubmo for ubmo in self.maps if ubmo.difficulties]
         
     def add_item_by_id(self, id, amount):
         obj = self.find_item_by_id(id)
@@ -121,6 +199,12 @@ class User:
         for items in self.items.values():
             found = next((obj for obj in items.values() if obj.id == id), None)
             if found is not None:
+                print(f"Found item with id {id}, duplicates: {getattr(found, 'duplicates', 0)}")
+                
+                # If the item type is a Tool, always return 1 since Tools are one-per-type
+                if getattr(found, 'type', None) == 'Tool':
+                    return 1
+                
                 return getattr(found, 'duplicates', 0)
 
         return 0
@@ -180,7 +264,8 @@ async def Dict_To_User(data):
             items[key1][key2] = await Dict_To_Item(val2)   
         
     
-    result = User(data["id"], maps, items, data["pp"], data["rolls_amount"], data["rank"], data["roll_max"], data["luck_mult"], data["xp"], data["level"])
+    dev_luck_base = data.get("dev_luck_base", data.get("luck_mult", 1))
+    result = User(data["id"], maps, items, data["pp"], data["rolls_amount"], data["rank"], data["roll_max"], data["luck_mult"], data["xp"], data["level"], dev_luck_base)
     
     return result
 

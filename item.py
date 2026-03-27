@@ -1,4 +1,52 @@
-import copy
+from enum import Enum
+
+
+class MapRequirement:
+    def __init__(self, amount: int = 1, min_star: float | None = None, max_star: float | None = None, include_min: bool = True, include_max: bool = True):
+        self.amount = amount
+        self.min_star = min_star
+        self.max_star = max_star
+        self.include_min = include_min
+        self.include_max = include_max
+
+    def matches(self, map_diff) -> bool:
+        star = getattr(map_diff, "sr", None)
+        if star is None:
+            return False
+
+        if self.min_star is not None:
+            if self.include_min:
+                if star < self.min_star:
+                    return False
+            else:
+                if star <= self.min_star:
+                    return False
+
+        if self.max_star is not None:
+            if self.include_max:
+                if star > self.max_star:
+                    return False
+            else:
+                if star >= self.max_star:
+                    return False
+
+        return True
+
+    def format_requirement(self) -> str:
+        if self.min_star is not None and self.max_star is None:
+            op = ">=" if self.include_min else ">"
+            return f"{self.amount} map(s) with star rating {op} {self.min_star}"
+
+        if self.max_star is not None and self.min_star is None:
+            op = "<=" if self.include_max else "<"
+            return f"{self.amount} map(s) with star rating {op} {self.max_star}"
+
+        if self.min_star is not None and self.max_star is not None:
+            left = ">=" if self.include_min else ">"
+            right = "<=" if self.include_max else "<"
+            return f"{self.amount} map(s) with {self.min_star} {left} SR {right} {self.max_star}"
+
+        return f"{self.amount} map(s)"
 
 class Item:
     def __init__(self, rarity, cost, name, value, function, id, description, duplicates, type):
@@ -10,6 +58,15 @@ class Item:
         self.id = id
         self.description = description
         self.duplicates = duplicates
+        self.type = type
+        
+class Tool:
+    def __init__(self, rarity, name, function, id, description, type):
+        self.rarity = rarity
+        self.name = name
+        self.function = function
+        self.id = id
+        self.description = description
         self.type = type
         
 class Shard(Item):
@@ -45,29 +102,59 @@ class Gear_Peripheral(Gear):
         self.equipped = equipped
         
 class CraftingRecipe:
-    def __init__(self, id, name, result, requirements, description):
+    def __init__(self, id, name, result, requirements, description, item_requirement=None, map_requirement: MapRequirement | None = None):
         self.id = id
         self.name = name
         self.result = result            
         self.requirements = requirements  
         self.description = description
+
+        # This recipe wont show up on the crafting screen unless the user has this item in their inventory (used for gating recipes behind tools)
+        self.item_requirement = item_requirement
+        self.map_requirement = map_requirement
         
     def max_craftable(self, user) -> int:
         """
         Returns the maximum number of times this recipe can be crafted
         based on user's inventory.
         """
-        return min(
-            user.count_item_by_id(item_id) // amount
-            for item_id, amount in self.requirements.items()
-        )
+        item_max = float("inf")
+        if self.requirements:
+            item_max = min(
+                user.count_item_by_id(item_id) // amount
+                for item_id, amount in self.requirements.items()
+            )
+
+        map_max = float("inf")
+        if self.map_requirement is not None:
+            eligible_count = user.count_eligible_maps(
+                min_star=self.map_requirement.min_star,
+                max_star=self.map_requirement.max_star,
+                include_min=self.map_requirement.include_min,
+                include_max=self.map_requirement.include_max,
+            )
+            map_max = eligible_count // self.map_requirement.amount
+
+        result = min(item_max, map_max)
+
+        if result == float("inf"):
+            return 0
+
+        return int(result)
 
     def can_craft(self, user, amount: int = 1) -> bool:
         return self.max_craftable(user) >= amount
 
-    def consume(self, user, amount: int):
+    def consume(self, user, amount: int, selected_map_ids: list[int] | None = None):
         for item_id, req_amount in self.requirements.items():
             user.remove_item_by_id(item_id, req_amount * amount)
+
+        if self.map_requirement is not None:
+            needed = self.map_requirement.amount * amount
+            if selected_map_ids is None or len(selected_map_ids) < needed:
+                raise ValueError("Not enough selected maps to satisfy this recipe.")
+
+            user.remove_maps_by_id_list(selected_map_ids[:needed])
 
     def give_result(self, user, amount: int):
         self.result.duplicates = amount
@@ -574,6 +661,82 @@ PERIPHERALS = [
 SHOP_ITEMS = {
     "Peripherals": PERIPHERALS
 }
+
+MAP_REFINER_MKI = Tool(
+    rarity="Rare",
+    name="Map Refiner MKI",
+    function="Used for refining beatmaps. Unlocks Map Essence crafting.",
+    id="MAP_REFINER_MKI",
+    description="A tool used for refining beatmaps into Map Essences.",
+    type="Tool"
+)
+
+MAP_REFINER_MKII = Tool(
+    rarity="Mythic",
+    name="Map Refiner MKII",
+    function="Used for refining beatmaps. Unlocks Condensed Map Essence crafting.",
+    id="MAP_REFINER_MKII",
+    description="A tool used for refining beatmaps into Condensed Map Essences.",
+    type="Tool"
+)
+
+STAR_HARVESTER = Tool(
+    rarity="Legendary",
+    name="Star Harvester",
+    function="Used for harvesting star essence from dying stars. Unlocks Condensed Star Essence crafting.",
+    id="STAR_HARVESTER",
+    description="A tool used for harvesting star essence from dying stars and turning them into Condensed Star Essences.",
+    type="Tool"
+)
+
+STARESSENCE = Special(
+    rarity="Special",
+    cost=False,
+    name="Star Essence",
+    value=500,
+    function="Used for crafting.",
+    id="STAR_ESSENCE",
+    description="Star essence fragments collected from dying stars.",
+    duplicates=1,
+    type="Special"
+)
+
+MAP_ESSENCE = Special(
+    rarity="Special",
+    cost=False,
+    name="Map Essence",
+    value=120,
+    function="Used for crafting.",
+    id="MAP_ESSENCE",
+    description="Essence extracted from beatmaps using the Map Refiner.",
+    duplicates=1,
+    type="Special"
+)
+
+CONDENSED_MAP_ESSENCE = Special(
+    rarity="Special",
+    cost=False,
+    name="Condensed Map Essence",
+    value=1000,
+    function="Used for crafting.",
+    id="CONDENSED_MAP_ESSENCE",
+    description="A condensed form of Map Essence that can be used for advanced crafting.",
+    duplicates=1,
+    type="Special"
+)
+
+CONDENSED_STAR_ESSENCE = Special(
+    rarity="Special",
+    cost=False,
+    name="Condensed Star Essence",
+    value=10000,
+    function="Used for crafting.",
+    id="CONDENSED_STAR_ESSENCE",
+    description="A condensed form of Star Essence that can be used for advanced crafting.",
+    duplicates=1,
+    type="Special"
+)
+
 ##############
 
 # Crafting recipes for Beatmap Charms
@@ -603,22 +766,12 @@ for idx, rarity in enumerate(shard_rarity_order):
         name=f"{rarity} Beatmap Charm",
         result=charm,
         requirements=requirements,
-        description=f"Craft a {rarity} Beatmap Charm using 25 {rarity} shards" + (f" + 1 {lower} Beatmap Charm" if idx > 0 else "")
+        description=f"Craft a {rarity} Beatmap Charm using 25 {rarity} shards" + (f" + 1 {lower} Beatmap Charm" if idx > 0 else ""),
+        # Requires the previous charm as an item requirement to show up in the crafting screen (except for common)
+        item_requirement=lower_charm.id if idx > 0 else None
     )
 
     BEATMAP_CHARM_RECIPES.append(recipe)
-
-STARESSENCE = Special(
-    rarity="Special",
-    cost=False,
-    name="Star Essence",
-    value=500,
-    function="Used for crafting.",
-    id="STAR_ESSENCE",
-    description="Star essence fragments collected from dying stars.",
-    duplicates=1,
-    type="Special"
-)
 
 SHARDS_BY_ID = {
     shard.id: shard
@@ -656,9 +809,86 @@ for rarity, shard in SHARDS.items():
 
     SHARD_CORE_RECIPES.append(recipe)
     
+MAP_REFINER_MKI_RECIPE = CraftingRecipe(
+    id="CRAFT_MAP_REFINER_MKI",
+    name="Map Refiner MKI",
+    result=MAP_REFINER_MKI,
+    requirements={
+        SHARDS["Common"].id: 120,
+        SHARDS["Uncommon"].id: 50,   
+        SHARDS["Rare"].id: 25,
+        SHARDS["Epic"].id: 5,
+        SHARD_CORES["Common"].id: 10,
+        SHARD_CORES["Uncommon"].id: 2,
+        SHARD_CORES["Rare"].id: 1
+    },
+    description="Craft the Map Refiner MKI to unlock Map Essence crafting."
+)
+
+MAP_REFINER_MKII_RECIPE = CraftingRecipe(
+    id="CRAFT_MAP_REFINER_MKII",
+    name="Map Refiner MKII",
+    result=MAP_REFINER_MKII,
+    requirements={
+        SHARDS["Uncommon"].id: 100,
+        SHARDS["Mythic"].id: 10,
+        SHARD_CORES["Uncommon"].id: 50,
+        SHARD_CORES["Rare"].id: 10,
+        SHARD_CORES["Epic"].id: 5
+    },
+    description="Craft the Map Refiner MKII to unlock Condensed Map Essence crafting.",
+    item_requirement=MAP_REFINER_MKI.id
+)
+
+STAR_HARVESTER_RECIPE = CraftingRecipe(
+    id="CRAFT_STAR_HARVESTER",
+    name="Star Harvester",
+    result=STAR_HARVESTER,
+    requirements={
+        MAP_ESSENCE.id: 100,
+        STARESSENCE.id: 250,
+        CONDENSED_MAP_ESSENCE.id: 5,
+        SHARD_CORES["Mythic"].id: 50,
+    },
+    description="Craft the Star Harvester to unlock Condensed Star Essence crafting.",
+    item_requirement=MAP_REFINER_MKII.id
+)
+
+MAP_ESSENCE_RECIPE = CraftingRecipe(
+    id="CRAFT_MAP_ESSENCE",
+    name="Map Essence",
+    result=MAP_ESSENCE,
+    requirements={},
+    description="Refine 1 map with star rating higher than 5 into Map Essence.",
+    item_requirement=MAP_REFINER_MKI.id,
+    map_requirement=MapRequirement(
+        amount=1,
+        min_star=5.0,
+        include_min=False,
+    )
+)
+
+CONDENSED_MAP_ESSENCE_RECIPE = CraftingRecipe(
+    id="CRAFT_CONDENSED_MAP_ESSENCE",
+    name="Condensed Map Essence",
+    result=CONDENSED_MAP_ESSENCE,
+    requirements={
+        MAP_ESSENCE.id: 25,
+    },
+    description="Refine 25 Map Essence and 1 map with star rating higher than 6 into Condensed Map Essence.",
+    item_requirement=MAP_REFINER_MKII.id,
+    map_requirement=MapRequirement(
+        amount=1,
+        min_star=6.0,
+        include_min=False,
+    )
+)
+    
 ALL_RECIPES = {
     "ShardCores": SHARD_CORE_RECIPES,
-    "BeatmapCharms": BEATMAP_CHARM_RECIPES
+    "BeatmapCharms": BEATMAP_CHARM_RECIPES,
+    "Tools": [MAP_REFINER_MKI_RECIPE, MAP_REFINER_MKII_RECIPE, STAR_HARVESTER_RECIPE],
+    "Essences": [MAP_ESSENCE_RECIPE, CONDENSED_MAP_ESSENCE_RECIPE],
 }
 
 RECIPES_BY_ID = {
@@ -679,6 +909,9 @@ for charm in BEATMAP_CHARMS.values():
     ITEMS_BY_ID[charm.id] = charm
 
 ITEMS_BY_ID[STARESSENCE.id] = STARESSENCE
+ITEMS_BY_ID[MAP_ESSENCE.id] = MAP_ESSENCE
+ITEMS_BY_ID[CONDENSED_MAP_ESSENCE.id] = CONDENSED_MAP_ESSENCE
+ITEMS_BY_ID[CONDENSED_STAR_ESSENCE.id] = CONDENSED_STAR_ESSENCE
 
 for peripheral in PERIPHERALS:
     ITEMS_BY_ID[peripheral.id] = peripheral
