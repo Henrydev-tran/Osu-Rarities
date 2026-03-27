@@ -2302,21 +2302,63 @@ async def uov(ctx):
     await ctx.message.reply("You do not have the permission to use this command.")
     
 # Check available commands
-# This function is super old
-# Pending update
 @client.command("help")
 async def help(ctx):
     await login(ctx.author.id)
-    
-    await ctx.message.reply("Check DMs.")
-    
-    await ctx.author.send("""Prefix - o!
-ping - Check status of Bot. example: o!ping.
-calculaterarity - Calculate rarity of a given star rating. Arguments: <sr>. example: o!calculaterarity 7.86.
-load_beatmapset - Returns json data of a beatmapset with a given bms id. Arguments: <bms_id>. example: o!load_beatmapset 2288709.
-mapsloaded - Check how many maps has been loaded into the database. example: o!mapsloaded.
-help - Shows this message.
-7 more dev-only commands.""")
+
+    embed = discord.Embed(
+        title="osu! Rarities — Command List",
+        description="Prefix: `o!`  •  Arguments in `<angle brackets>` are required, `[square brackets]` are optional.",
+        color=discord.Color.blurple()
+    )
+
+    embed.add_field(
+        name="🎲 Rolling & Maps",
+        value=(
+            "`o!roll` — Roll a random beatmap based on your luck multiplier.\n"
+            "`o!maps [user_id]` — Browse your beatmap collection (paginated).\n"
+            "`o!sellmaps [user_id]` — Sell maps from your collection for PP.\n"
+            "`o!lookup <beatmap_id>` — Look up a beatmap and see which difficulties you own.\n"
+            "`o!mapsloaded` — Check how many beatmaps are in the database."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="💰 Economy & Progression",
+        value=(
+            "`o!balance` — Check your current PP balance.\n"
+            "`o!level` — View your level, XP, and progress toward the next level.\n"
+            "`o!luckmult` — Check your current luck multiplier."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🎒 Items & Equipment",
+        value=(
+            "`o!inventory` — View items and shards in your inventory.\n"
+            "`o!item <item_id>` — View detailed info about a specific item.\n"
+            "`o!shop` — Browse the shop and buy items.\n"
+            "`o!equipment` — View and manage your equipped gear.\n"
+            "`o!craft` — Open the crafting menu to craft new items."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🔧 Utility",
+        value=(
+            "`o!calculaterarity <star_rating>` — Calculate the rarity of a given star rating.\n"
+            "`o!ping` — Check if the bot is online.\n"
+            "`o!help` — Show this message."
+        ),
+        inline=False
+    )
+
+    embed.set_footer(text="Developer-only commands are not listed here.")
+
+    await ctx.send(embed=embed)
 
 # Shop command
 # WIP, pending implementation of shop system and items
