@@ -33,6 +33,67 @@ client.remove_command("help")
 
 _initialized = False
 
+DEFAULT_DEV_USER_IDS = {
+    718102801242259466,
+    1177826548729008268,
+}
+
+DEFAULT_EXTENDED_DEV_USER_IDS = DEFAULT_DEV_USER_IDS | {
+    970958596424761366,
+}
+
+DEV_IDS_FILE = "json/dev_ids.json"
+
+DEV_USER_IDS = set(DEFAULT_DEV_USER_IDS)
+EXTENDED_DEV_USER_IDS = set(DEFAULT_EXTENDED_DEV_USER_IDS)
+
+
+def parse_user_id_arg(raw: str) -> int | None:
+    raw = raw.strip()
+
+    if raw.startswith("<@") and raw.endswith(">"):
+        raw = raw[2:-1]
+        if raw.startswith("!"):
+            raw = raw[1:]
+
+    if not raw.isdigit():
+        return None
+
+    return int(raw)
+
+
+async def save_dev_ids():
+    payload = {
+        "dev_user_ids": sorted(DEV_USER_IDS),
+        "extended_dev_user_ids": sorted(EXTENDED_DEV_USER_IDS),
+    }
+    await jsontools.save_to_json(DEV_IDS_FILE, payload)
+
+
+async def load_dev_ids():
+    global DEV_USER_IDS, EXTENDED_DEV_USER_IDS
+
+    try:
+        data = await jsontools.return_json(DEV_IDS_FILE)
+    except FileNotFoundError:
+        DEV_USER_IDS = set(DEFAULT_DEV_USER_IDS)
+        EXTENDED_DEV_USER_IDS = set(DEFAULT_EXTENDED_DEV_USER_IDS)
+        await save_dev_ids()
+        return
+
+    raw_devs = data.get("dev_user_ids", list(DEFAULT_DEV_USER_IDS))
+    raw_extended = data.get("extended_dev_user_ids", list(DEFAULT_EXTENDED_DEV_USER_IDS))
+
+    parsed_devs = {int(i) for i in raw_devs}
+    parsed_extended = {int(i) for i in raw_extended}
+
+    DEV_USER_IDS = parsed_devs or set(DEFAULT_DEV_USER_IDS)
+    EXTENDED_DEV_USER_IDS = parsed_extended | DEV_USER_IDS
+
+    # Keep file normalized and ensure core devs are always included.
+    await save_dev_ids()
+
+
 async def heartbeat():
     while True:
         # Auto save player data every 5 minutes
@@ -46,6 +107,8 @@ async def on_ready():
     if _initialized:
         return
     _initialized = True
+
+    await load_dev_ids()
     
     asyncio.create_task(heartbeat())  
 
@@ -1837,7 +1900,7 @@ async def loadbms(ctx, bms):
 # Load a beatmapset of a given ID and saves it into database (dev only)
 @client.command("loadbms_intodatabase")
 async def loadbmsintodatabase(ctx, msid):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         bms = None
         
         json_object = await return_json("json/maps.json")
@@ -1884,7 +1947,7 @@ async def loadbms(msid):
 # Load the next page of beatmapsets (dev only)
 @client.command("load_next")
 async def loadnext_page(ctx):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         await loadnpage()
         
         await ctx.message.reply("Loaded 50 new beatmaps into the database")
@@ -1896,7 +1959,7 @@ async def loadnext_page(ctx):
 # Load the next given amount of pages (dev only)
 @client.command("load_multipages")
 async def loadmanypages(ctx, num):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         amount_maps = 0
         
         for i in range(int(num)):
@@ -1911,7 +1974,7 @@ async def loadmanypages(ctx, num):
 
 @client.command("setpp")
 async def setpp(ctx, pp):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         userdata = await login(ctx.author.id)
         await userdata.edit_pp(int(pp))
         await update_user(userdata)
@@ -1998,7 +2061,7 @@ async def loadedamount(ctx):
 # Reset the internal page count (dev only)
 @client.command("reset_page_count")
 async def rpc(ctx):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         await reset_page_count()
         await ctx.message.reply("Done.")
         print("Reseted page back to 0.")
@@ -2010,7 +2073,7 @@ async def rpc(ctx):
 # set the internal page count (dev only)
 @client.command("spc")
 async def spc(ctx, page):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         await set_page_count(page)
         await ctx.message.reply("Done.")
         print(f"Set page to {page}.")
@@ -2022,7 +2085,7 @@ async def spc(ctx, page):
 # Change query of bot search
 @client.command("change_year")
 async def bot_change_year(ctx, year):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         await change_year(year)
         await set_query_year(await get_year())
         await ctx.message.reply(f"Done, changed the query date to {str(year)}")
@@ -2037,7 +2100,7 @@ async def bot_change_year(ctx, year):
 async def disable_rolling(ctx):
     global rolling_disabled
     
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         if rolling_disabled:
             await ctx.message.reply("Rolling Enabled.")
         if not rolling_disabled:
@@ -2048,11 +2111,81 @@ async def disable_rolling(ctx):
         return
     
     await ctx.message.reply("You do not have the permission to use this command.") 
+
+# Add an extended developer (core dev only)
+@client.command("add_extended_dev")
+async def add_extended_dev(ctx, target: str):
+    if ctx.author.id not in DEV_USER_IDS:
+        await ctx.message.reply("You do not have the permission to use this command.")
+        return
+
+    user_id = parse_user_id_arg(target)
+    if user_id is None:
+        await ctx.message.reply("Invalid user. Use a mention like @user or a numeric user ID.")
+        return
+
+    user_mention = f"<@{user_id}>"
+
+    if user_id in EXTENDED_DEV_USER_IDS:
+        await ctx.message.reply(f"{user_mention} is already an extended developer.")
+        return
+
+    EXTENDED_DEV_USER_IDS.add(user_id)
+    await save_dev_ids()
+    await ctx.message.reply(f"{user_mention} has been added as an extended developer.")
+
+# Remove an extended developer (core dev only)
+@client.command("remove_extended_dev")
+async def remove_extended_dev(ctx, target: str):
+    if ctx.author.id not in DEV_USER_IDS:
+        await ctx.message.reply("You do not have the permission to use this command.")
+        return
+
+    user_id = parse_user_id_arg(target)
+    if user_id is None:
+        await ctx.message.reply("Invalid user. Use a mention like @user or a numeric user ID.")
+        return
+
+    user_mention = f"<@{user_id}>"
+
+    if user_id in DEV_USER_IDS:
+        await ctx.message.reply(f"{user_mention} is a core developer and cannot be removed from extended developer access.")
+        return
+
+    if user_id not in EXTENDED_DEV_USER_IDS:
+        await ctx.message.reply(f"{user_mention} is not an extended developer.")
+        return
+
+    EXTENDED_DEV_USER_IDS.remove(user_id)
+    await save_dev_ids()
+    await ctx.message.reply(f"{user_mention} has been removed from extended developers.")
+
+# Show current core/extended developer lists (core dev only)
+@client.command("show_devs")
+async def show_devs(ctx):
+    if ctx.author.id not in DEV_USER_IDS:
+        await ctx.message.reply("You do not have the permission to use this command.")
+        return
+
+    core_sorted = sorted(DEV_USER_IDS)
+    extended_sorted = sorted(EXTENDED_DEV_USER_IDS)
+
+    core_lines = [f"<@{user_id}> ({user_id})" for user_id in core_sorted]
+    extended_lines = [f"<@{user_id}> ({user_id})" for user_id in extended_sorted]
+
+    embed = discord.Embed(
+        title="Developer Access Lists",
+        color=discord.Color.red()
+    )
+    embed.add_field(name="Core Developers", value="\n".join(core_lines) if core_lines else "None", inline=False)
+    embed.add_field(name="Extended Developers", value="\n".join(extended_lines) if extended_lines else "None", inline=False)
+
+    await ctx.message.reply(embed=embed, mention_author=False)
         
 # Add all difficulties to sorted file for sorting (dev only). Step 1
 @client.command("load_diffs_sorted")
 async def load_diffs_sorted(ctx):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         await add_diffs_to_sorted_file()
         
         await ctx.message.reply("Done.")
@@ -2064,7 +2197,7 @@ async def load_diffs_sorted(ctx):
 # Acumulate all ranges in file (dev only). Step 2
 """@client.command("load_cumulative_diffs")
 async def load_nmz_diffs(ctx):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         await add_cumulative_diffs_to_sorted_file()
         
         await ctx.message.reply("Done.")
@@ -2076,7 +2209,7 @@ async def load_nmz_diffs(ctx):
 # Calculate the ranges of rarities for sorted beatmaps (dev only). Step 3
 @client.command("calculate_ranges")
 async def calc_ranges(ctx):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         await add_ranges_to_file()
         
         await ctx.message.reply("Done.")
@@ -2088,7 +2221,7 @@ async def calc_ranges(ctx):
 # Get a specific beatmap and add it to user's inventory (dev only)
 @client.command("getmap")
 async def getmap(ctx, id, bmid, amount=1):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268 or ctx.author.id == 970958596424761366:
+    if ctx.author.id in EXTENDED_DEV_USER_IDS:
         userdata = await login(ctx.author.id)
         res = await load_beatmapset(id)
         
@@ -2127,7 +2260,7 @@ async def getmap(ctx, id, bmid, amount=1):
 # Set the luck multiplier of the user (dev only)
 @client.command("setluck")
 async def setluck(ctx, luck):
-    if ctx.author.id != 718102801242259466 and ctx.author.id != 1177826548729008268 and ctx.author.id != 970958596424761366:
+    if ctx.author.id not in EXTENDED_DEV_USER_IDS:
         await ctx.message.reply("You do not have the permission to use this command.")
         return
     
@@ -2148,6 +2281,25 @@ async def setluck(ctx, luck):
 async def roll_random(ctx):
     if not rolling_disabled:
         userdata = await login(ctx.author.id)
+        can_roll, retry_after, reason = await userdata.can_roll()
+
+        if not can_roll:
+            if reason == "cooldown":
+                await ctx.message.reply(
+                    f"You are on roll cooldown. Try again in {retry_after:.2f}s."
+                )
+                return
+
+            if reason == "roll_limit":
+                await ctx.message.reply(
+                    (
+                        f"You reached your rolling cap ({userdata.roll_max} rolls per "
+                        f"{userdata.roll_window_seconds} seconds). "
+                        f"Try again in {retry_after:.2f}s."
+                    )
+                )
+                return
+
         luck_mult = userdata.luck_mult
         print(luck_mult)
         
@@ -2170,6 +2322,7 @@ async def roll_random(ctx):
         
         old_level = userdata.level
         level_up = await userdata.add_xp(result["rarity"])
+        await userdata.register_roll()
         
         await userdata.add_map(ubmd)
         
@@ -2207,7 +2360,7 @@ async def level(ctx):
 # Clear userdata of a specific user (dev only, risky)
 @client.command("clear_userdata")
 async def clear_userdata_cmd(ctx, id):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:    
+    if ctx.author.id in DEV_USER_IDS:    
         await clear_userdata(id)
         
         await ctx.message.reply("Done.")
@@ -2219,7 +2372,7 @@ async def clear_userdata_cmd(ctx, id):
 # Clear ALL userdata in the database (dev only, risky)
 @client.command("clear_all_userdata")
 async def clear_all_userdata_cmd(ctx):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         json_object = await return_json("json/users.json")
         
         await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {format_number(len(json_object))} users gets cleared")
@@ -2238,7 +2391,7 @@ async def clear_all_userdata_cmd(ctx):
 # Clear ALL maps in the database (dev only, risky)
 @client.command("clear_all_maps")
 async def clear_maps_cmd(ctx):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         json_object = await return_json("json/maps.json")
         
         await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {format_number(len(json_object))} maps gets cleared")
@@ -2268,7 +2421,7 @@ async def luckmult(ctx):
 # Clear ALL sorted and ranges maps in the database (dev only, risky)
 @client.command("clear_sorted_diffs")
 async def clear_sorted_diffs_cmd(ctx):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         json_object = await return_json("json/sorteddiffs.json")
         
         await ctx.message.reply(f"This is a big decision. Are you sure about this? You have 20 seconds to turn off the bot before {format_number(len(json_object))} difficulties gets cleared")
@@ -2291,7 +2444,7 @@ async def clear_sorted_diffs_cmd(ctx):
 # Update optimization variables in case range or maps file change (dev only)
 @client.command("uov")
 async def uov(ctx):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         await update_optimization_variables()
         await load_gmaps_variable()
         await write_stored_variable()
@@ -2601,7 +2754,7 @@ async def maps(ctx, id = None):
 # Recalculate rarities of maps in the database in case of formula change (dev only)
 @client.command("recalculate_rarities")
 async def recalculate_rarities(ctx):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in DEV_USER_IDS:
         json_object = await return_json("json/maps.json")
         
         for i in json_object:
@@ -2619,7 +2772,7 @@ async def recalculate_rarities(ctx):
 # Developer command to give a specific item to themselves
 @client.command("give_dev")
 async def give_dev(ctx, itemid, amount):
-    if ctx.author.id == 718102801242259466 or ctx.author.id == 1177826548729008268:
+    if ctx.author.id in EXTENDED_DEV_USER_IDS:
         userdata = await login(ctx.author.id)
         
         # If user inputs an array of items, add all items in the array to inventory. Example: o!give_dev [item1,item2,item3] 1
@@ -2682,7 +2835,7 @@ async def simulate(ctx, users: int = 50, actions: int = 10, mode: str = "roll"):
     mode: 'roll' (default) only calls `get_random_map`; 'sell' will simulate rolling then selling each user's collected maps.
     """
     # only allow developers
-    if ctx.author.id not in (718102801242259466, 1177826548729008268):
+    if ctx.author.id not in DEV_USER_IDS:
         await ctx.message.reply("You do not have the permission to use this command.")
         return
 
@@ -2742,4 +2895,57 @@ async def simulate(ctx, users: int = 50, actions: int = 10, mode: str = "roll"):
         f"(total calls={users * actions}, total_pp={format_number(total_pp)}, total_shards={format_number(total_shards)})"
     ))
 
-client.run(os.getenv("token"))
+# Show dev-only commands    
+@client.command("devhelp")
+async def devhelp(ctx):
+    if ctx.author.id in DEV_USER_IDS:
+        embed = discord.Embed(
+            title="osu! Rarities — Developer Command List",
+            description="Prefix: `o!`  •  Arguments in `<angle brackets>` are required, `[square brackets]` are optional.",
+            color=discord.Color.red()
+        )
+
+        embed.add_field(
+            name="Map & User Management",
+            value=(
+                "`o!loadmaps` — Load beatmaps into the database from the osu! API (50 maps per call).\n"
+                "`o!recalculate_rarities` — Recalculate rarities of all maps in the database (use if formula changes).\n"
+                "`o!clear_userdata <user_id>` — Clear inventory and progress of a specific user.\n"
+                "`o!clear_all_userdata` — Clear inventory and progress of all users (use with caution!).\n"
+                "`o!clear_all_maps` — Clear all beatmaps from the database (use with caution!).\n"
+                "`o!clear_sorted_diffs` — Clear sorted difficulties and ranges data (use with caution!).\n"
+                "`o!uov` — Update optimization variables after changing maps or ranges data."
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Bot Configuration",
+            value=(
+                "`o!setpp <amount>` — Set your PP balance to a specific amount.\n"
+                "`o!setluck <multiplier>` — Set your base luck multiplier (gear multipliers apply on top of this).\n"
+                "`o!add_extended_dev <@user>` — Grant extended developer permissions to a user (core devs only).\n"
+                "`o!remove_extended_dev <@user>` — Remove extended developer permissions from a user (core devs only).\n"
+                "`o!show_devs` — Show current core and extended developer lists.\n"
+                "`o!give_dev <item_id or [item_id1,item_id2,...]> <amount>` — Give yourself a specific item or multiple items for testing (check item IDs in shop/crafting menu/inventory).\n"
+                "`o!change_year <year>` — Change the query year for beatmap loading (e.g. to load only maps ranked before a certain year).\n"
+                "`o!toggle_rolling` — Enable or disable rolling for all users."
+            ),
+            inline=False
+        )
+
+        embed.add_field(
+            name="Testing & Simulation",
+            value=(
+                "`o!getmap <beatmapset_id> <beatmap_id> [amount]` — Add a specific beatmap difficulty to your inventory for testing purposes.\n"
+                "`o!test_embed` — Send a test embed to preview formatting.\n"
+                "`o!simulate [users] [actions] [mode]` — Simulate concurrent users performing actions to test performance (mode: 'roll' or 'sell')."
+            ),
+            inline=False
+        )
+    
+        await ctx.send(embed=embed)
+    else:
+        await ctx.message.reply("You do not have the permission to use this command.")
+
+client.run(os.getenv("tester_token"))

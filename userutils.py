@@ -6,10 +6,11 @@ import math, asyncio
 from collections import Counter
 from item import SHARDS, STARESSENCE
 import copy
+import time
 
 # User class for...users obviously why do you even need this comment
 class User:
-    def __init__(self, id, maps=[], items={}, pp=0, rolls_amount=25, rank=0, roll_max=25, luck_mult=1, xp=0, level=1, dev_luck_base=1):
+    def __init__(self, id, maps=[], items={}, pp=0, rolls_amount=25, rank=0, roll_max=25, luck_mult=1, xp=0, level=1, dev_luck_base=1, roll_cooldown=1.0, roll_window_seconds=300, roll_timestamps=None):
         self.id = id
         self.maps = maps
         self.items = items
@@ -17,6 +18,9 @@ class User:
         self.rolls_amount = rolls_amount
         self.rank = rank
         self.roll_max = roll_max
+        self.roll_cooldown = float(roll_cooldown)
+        self.roll_window_seconds = int(roll_window_seconds)
+        self.roll_timestamps = roll_timestamps if roll_timestamps is not None else []
         self.luck_mult = luck_mult
         self.xp = xp
         self.level = level
@@ -226,6 +230,40 @@ class User:
     
     async def add_rolls(self, amount):
         self.rolls_amount += amount
+
+    def _prune_roll_timestamps(self, now=None):
+        if now is None:
+            now = time.time()
+
+        cutoff = now - self.roll_window_seconds
+        self.roll_timestamps = [ts for ts in self.roll_timestamps if ts > cutoff]
+
+    async def can_roll(self):
+        now = time.time()
+        self._prune_roll_timestamps(now)
+
+        if self.roll_timestamps:
+            next_allowed = self.roll_timestamps[-1] + self.roll_cooldown
+            if now < next_allowed:
+                return False, max(0.0, next_allowed - now), "cooldown"
+
+        if len(self.roll_timestamps) >= self.roll_max:
+            retry_after = self.roll_timestamps[0] + self.roll_window_seconds - now
+            return False, max(0.0, retry_after), "roll_limit"
+
+        return True, 0.0, None
+
+    async def register_roll(self):
+        now = time.time()
+        self._prune_roll_timestamps(now)
+        self.roll_timestamps.append(now)
+
+    async def set_roll_max(self, new_roll_max):
+        self.roll_max = max(1, int(new_roll_max))
+
+    async def set_roll_cooldown(self, new_cooldown_seconds):
+        # Keep a small lower bound to avoid zero/negative spam loops.
+        self.roll_cooldown = max(0.05, float(new_cooldown_seconds))
     
     async def change_rank(self, new_rank):
         self.rank = new_rank
@@ -265,7 +303,22 @@ async def Dict_To_User(data):
         
     
     dev_luck_base = data.get("dev_luck_base", data.get("luck_mult", 1))
-    result = User(data["id"], maps, items, data["pp"], data["rolls_amount"], data["rank"], data["roll_max"], data["luck_mult"], data["xp"], data["level"], dev_luck_base)
+    result = User(
+        data["id"],
+        maps,
+        items,
+        data.get("pp", 0),
+        data.get("rolls_amount", 25),
+        data.get("rank", 0),
+        data.get("roll_max", 25),
+        data.get("luck_mult", 1),
+        data.get("xp", 0),
+        data.get("level", 1),
+        dev_luck_base,
+        data.get("roll_cooldown", 1.0),
+        data.get("roll_window_seconds", 300),
+        data.get("roll_timestamps", []),
+    )
     
     return result
 
