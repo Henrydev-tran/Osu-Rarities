@@ -145,7 +145,11 @@ async def User_To_Dict(user):
         "luck_mult": user.luck_mult,
         "dev_luck_base": getattr(user, "dev_luck_base", 1),
         "xp": user.xp,
-        "level": user.level
+        "level": user.level,
+        "display_name": getattr(user, "display_name", None),
+        "is_fake": getattr(user, "is_fake", False),
+        "equipped_map_id": getattr(user, "equipped_map_id", None),
+        "rarest_rolled_rarity": getattr(user, "rarest_rolled_rarity", 0)
     }
     
     return result

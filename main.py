@@ -1,6 +1,7 @@
 import os
 
 import asyncio
+import random
 
 import discord
 from discord.ext import commands
@@ -32,6 +33,39 @@ client = commands.Bot(command_prefix='o!', intents=discord.Intents(message_conte
 client.remove_command("help")
 
 _initialized = False
+LEADERBOARD_FILE = "json/leaderboard.json"
+LEADERBOARD_REFRESH_SECONDS = 300
+LEADERBOARD_PAGE_SIZE = 20
+LEADERBOARD_MAX_PLAYERS = 100
+FAKE_USER_ID_BASE = 9_000_000_000_000_000
+
+FAKE_NAME_PREFIXES = [
+    "Hidden",
+    "Solar",
+    "Crimson",
+    "Frozen",
+    "Velvet",
+    "Nova",
+    "Silent",
+    "Pixel",
+]
+
+FAKE_NAME_SUFFIXES = [
+    "Spinner",
+    "Stream",
+    "Mapper",
+    "Cursor",
+    "Burst",
+    "Slider",
+    "Rhythm",
+    "Starlight",
+]
+
+leaderboard_cache = []
+leaderboard_details = []
+leaderboard_last_refresh_at = None
+leaderboard_next_refresh_at = None
+leaderboard_refresh_lock = asyncio.Lock()
 
 DEFAULT_DEV_USER_IDS = {
     718102801242259466,
@@ -94,11 +128,321 @@ async def load_dev_ids():
     await save_dev_ids()
 
 
+def calculate_inventory_rarity_total(user) -> int:
+    total_rarity = 0
+
+    for owned_map in getattr(user, "maps", []):
+        for diff in getattr(owned_map, "difficulties", []):
+            total_rarity += int(getattr(diff, "rarity", 0)) * int(getattr(diff, "duplicates", 0))
+
+    return total_rarity
+
+
+def format_equipped_items(user) -> str:
+    peripherals = user.items.get("GearPeripheral", {})
+
+    lines = []
+
+    equipped_peripherals = [item for item in peripherals.values() if getattr(item, "equipped", False)]
+    if equipped_peripherals:
+        lines.append(
+            "Peripherals: " + ", ".join(
+                f"{item.peripheraltype}: {item.name}" for item in equipped_peripherals
+            )
+        )
+    else:
+        lines.append("Peripherals: None equipped")
+
+    return "\n".join(lines)
+
+
+async def get_leaderboard_rank_for_user(user) -> int | None:
+    async with stored_users_lock:
+        users = list(stored_users.users.values())
+
+    ranked_users = sorted(
+        users,
+        key=lambda u: (
+            -int(getattr(u, "level", 1)),
+            -int(getattr(u, "pp", 0)),
+            -calculate_inventory_rarity_total(u),
+            int(u.id)
+        )
+    )
+
+    for rank, candidate in enumerate(ranked_users, start=1):
+        if int(candidate.id) == int(user.id):
+            return rank
+
+    return None
+
+
+async def get_all_leaderboard_ranks_for_user(user):
+    async with stored_users_lock:
+        users = list(stored_users.users.values())
+
+    ranks = {}
+
+    # Level leaderboard
+    ranked_users_level = sorted(
+        users,
+        key=lambda u: (
+            -int(getattr(u, "level", 1)),
+            -int(getattr(u, "pp", 0)),
+            -calculate_inventory_rarity_total(u),
+            int(u.id)
+        )
+    )
+    for rank, candidate in enumerate(ranked_users_level, start=1):
+        if int(candidate.id) == int(user.id):
+            ranks["level"] = rank
+            break
+
+    # PP leaderboard
+    ranked_users_pp = sorted(
+        users,
+        key=lambda u: (
+            -int(getattr(u, "pp", 0)),
+            -int(getattr(u, "level", 1)),
+            -calculate_inventory_rarity_total(u),
+            int(u.id)
+        )
+    )
+    for rank, candidate in enumerate(ranked_users_pp, start=1):
+        if int(candidate.id) == int(user.id):
+            ranks["pp"] = rank
+            break
+
+    # Rarity leaderboard
+    ranked_users_rarity = sorted(
+        users,
+        key=lambda u: (
+            -calculate_inventory_rarity_total(u),
+            -int(getattr(u, "level", 1)),
+            -int(getattr(u, "pp", 0)),
+            int(u.id)
+        )
+    )
+    for rank, candidate in enumerate(ranked_users_rarity, start=1):
+        if int(candidate.id) == int(user.id):
+            ranks["rarity"] = rank
+            break
+
+    return ranks
+
+
+def leaderboard_sort_key(entry):
+    return (-entry["level"], -entry["pp"], -entry["inventory_rarity"], entry["id"])
+
+
+LEADERBOARD_SORT_MODES = {
+    "level": {
+        "label": "Level",
+        "description": "Sorted by level.",
+        "stat_key": "level",
+        "stat_label": "Level",
+        "key": lambda entry: (-entry["level"], -entry["pp"], -entry["inventory_rarity"], entry["id"]),
+    },
+    "pp": {
+        "label": "PP",
+        "description": "Sorted by PP.",
+        "stat_key": "pp",
+        "stat_label": "PP",
+        "key": lambda entry: (-entry["pp"], -entry["level"], -entry["inventory_rarity"], entry["id"]),
+    },
+    "rarity": {
+        "label": "Map Rarity",
+        "description": "Sorted by total map rarity.",
+        "stat_key": "inventory_rarity",
+        "stat_label": "Inventory rarity",
+        "key": lambda entry: (-entry["inventory_rarity"], -entry["level"], -entry["pp"], entry["id"]),
+    },
+}
+
+
+def sort_leaderboard_entries(entries, mode: str):
+    selected_mode = LEADERBOARD_SORT_MODES.get(mode, LEADERBOARD_SORT_MODES["level"])
+    return sorted(entries, key=selected_mode["key"])
+
+
+def get_leaderboard_pages(mode: str = "level"):
+    if not leaderboard_details:
+        return []
+
+    sorted_entries = sort_leaderboard_entries(leaderboard_details, mode)[:LEADERBOARD_MAX_PLAYERS]
+    return chunk_list(sorted_entries, LEADERBOARD_PAGE_SIZE)
+
+
+def build_leaderboard_embed(mode: str = "level", page_index: int = 0):
+    pages = get_leaderboard_pages(mode)
+    if not pages:
+        return None
+
+    selected_mode = LEADERBOARD_SORT_MODES.get(mode, LEADERBOARD_SORT_MODES["level"])
+    page_index = max(0, min(page_index, len(pages) - 1))
+    page_entries = pages[page_index]
+
+    lines = []
+    start_rank = page_index * LEADERBOARD_PAGE_SIZE
+    for offset, entry in enumerate(page_entries, start=1):
+        stat_value = format_number(entry[selected_mode["stat_key"]])
+        lines.append(
+            f"**#{start_rank + offset}** {entry['name']} • {selected_mode['stat_label']} {stat_value}"
+        )
+
+    embed = discord.Embed(
+        title=f"Player Leaderboard — {selected_mode['label']}",
+        description="\n".join(lines),
+        color=discord.Color.gold(),
+        timestamp=datetime.datetime.now()
+    )
+
+    embed.add_field(
+        name="Current Sort",
+        value=selected_mode["description"],
+        inline=False
+    )
+
+    if leaderboard_next_refresh_at is not None:
+        next_refresh_unix = int(leaderboard_next_refresh_at.timestamp())
+        embed.add_field(
+            name="Next Refresh",
+            value=f"<t:{next_refresh_unix}:R> (<t:{next_refresh_unix}:T>)",
+            inline=False
+        )
+
+    embed.set_footer(text=f"Page {page_index + 1}/{len(pages)} • Showing top {sum(len(page) for page in pages)} players")
+
+    return embed
+
+
+async def resolve_leaderboard_name(user_id: int) -> str:
+    cached_user = client.get_user(user_id)
+    if cached_user is not None:
+        return getattr(cached_user, "display_name", None) or getattr(cached_user, "global_name", None) or cached_user.name
+
+    try:
+        fetched_user = await client.fetch_user(user_id)
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        return str(user_id)
+
+    return getattr(fetched_user, "display_name", None) or getattr(fetched_user, "global_name", None) or fetched_user.name
+
+
+async def refresh_leaderboard():
+    global leaderboard_cache, leaderboard_details, leaderboard_last_refresh_at, leaderboard_next_refresh_at
+
+    async with leaderboard_refresh_lock:
+        async with stored_users_lock:
+            users = list(stored_users.users.values())
+
+        ranked_users = []
+        for user in users:
+            ranked_users.append({
+                "id": int(user.id),
+                "level": int(getattr(user, "level", 1)),
+                "pp": int(getattr(user, "pp", 0)),
+                "inventory_rarity": calculate_inventory_rarity_total(user),
+                "display_name": getattr(user, "display_name", None),
+            })
+
+        ranked_users.sort(key=leaderboard_sort_key)
+        ranked_users = ranked_users[:LEADERBOARD_MAX_PLAYERS]
+
+        cached_names = {entry_id: entry_name for entry_name, entry_id in leaderboard_cache}
+        refreshed_details = []
+        saved_entries = []
+
+        for entry in ranked_users:
+            name = entry.get("display_name") or cached_names.get(entry["id"]) or await resolve_leaderboard_name(entry["id"])
+            refreshed_details.append({
+                **entry,
+                "name": name,
+            })
+            saved_entries.append((name, entry["id"]))
+
+        await jsontools.save_to_json(LEADERBOARD_FILE, saved_entries)
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        leaderboard_details = refreshed_details
+        leaderboard_cache = saved_entries
+        leaderboard_last_refresh_at = now
+        leaderboard_next_refresh_at = now + datetime.timedelta(seconds=LEADERBOARD_REFRESH_SECONDS)
+
+
+def generate_fake_user_name() -> str:
+    return f"{random.choice(FAKE_NAME_PREFIXES)} {random.choice(FAKE_NAME_SUFFIXES)} {random.randint(1000, 9999)}"
+
+
+def get_next_fake_user_id() -> int:
+    used_ids = {int(user_id) for user_id in stored_users.users.keys()}
+    next_id = FAKE_USER_ID_BASE
+
+    while next_id in used_ids:
+        next_id += 1
+
+    return next_id
+
+
+async def build_fake_user(user_id: int):
+    fake_name = generate_fake_user_name()
+    level = random.randint(1, 250)
+    xp_needed = max(1, xp_to_next_level(level))
+    fake_user = User(
+        user_id,
+        maps=[],
+        items={},
+        pp=random.randint(0, 5_000_000),
+        xp=random.randint(0, max(0, xp_needed - 1)),
+        level=level,
+        dev_luck_base=1,
+        display_name=fake_name,
+        is_fake=True,
+    )
+
+    map_count = random.randint(10, 80)
+    available_maps = getattr(probabilitycalc, "maps", None) or []
+    if not available_maps:
+        return fake_user
+
+    for _ in range(map_count):
+        map_data = random.choice(available_maps)
+        map_result = await Dict_to_BeatmapDiff(map_data)
+        duplicates = random.randint(1, 3)
+        owned_map = User_BMD_Object(
+            map_result.sr,
+            map_result.parent_id,
+            map_result.id,
+            map_result.title,
+            map_result.artist,
+            map_result.difficulty_name,
+            duplicates,
+        )
+        await fake_user.add_map(owned_map)
+
+    return fake_user
+
+
+async def clear_fake_users_from_store() -> int:
+    async with stored_users_lock:
+        fake_ids = [user_id for user_id, user in stored_users.users.items() if getattr(user, "is_fake", False)]
+
+        for user_id in fake_ids:
+            stored_users.users.pop(user_id, None)
+            stored_users.users_json.pop(user_id, None)
+
+    return len(fake_ids)
+
+
 async def heartbeat():
     while True:
-        # Auto save player data every 5 minutes
-        await asyncio.sleep(300)
-        await write_stored_variable()
+        await asyncio.sleep(LEADERBOARD_REFRESH_SECONDS)
+
+        try:
+            await write_stored_variable()
+            await refresh_leaderboard()
+        except Exception as error:
+            print(f"Heartbeat failed: {error}")
 
 # Loads all the necessary data for the bot to function
 @client.event
@@ -109,8 +453,6 @@ async def on_ready():
     _initialized = True
 
     await load_dev_ids()
-    
-    asyncio.create_task(heartbeat())  
 
     # Run module initialization concurrently
     print("starting user_handling")
@@ -124,6 +466,10 @@ async def on_ready():
     print("starting probabilitycalc")
     await probabilitycalc.init_probabilitycalc()
     print("done probabilitycalc")
+
+    await refresh_leaderboard()
+
+    asyncio.create_task(heartbeat())
 
     print(f"Bot ready as {client.user}")
     
@@ -323,6 +669,72 @@ class MapPaginator(discord.ui.View):
 
             self.paginator.update_pages()
             await interaction.response.edit_message(embed=self.paginator.make_embed(), view=self.paginator)
+
+
+class LeaderboardView(discord.ui.View):
+    def __init__(self, author: discord.User, initial_mode: str = "level"):
+        super().__init__(timeout=120)
+        self.author_id = author.id
+        self.mode = initial_mode
+        self.page_index = 0
+        self.add_item(self.SortDropdown(self))
+        self.update_buttons()
+
+    def update_buttons(self):
+        pages = get_leaderboard_pages(self.mode)
+        total_pages = len(pages)
+        self.previous.disabled = self.page_index <= 0
+        self.next.disabled = total_pages <= 1 or self.page_index >= total_pages - 1
+
+    async def refresh_message(self, interaction: discord.Interaction):
+        embed = build_leaderboard_embed(self.mode, self.page_index)
+        if embed is None:
+            await interaction.response.edit_message(content="No players are on the leaderboard yet.", embed=None, view=None)
+            return
+
+        self.update_buttons()
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "❌ This menu isn’t yours.",
+                ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="◀️", style=discord.ButtonStyle.secondary)
+    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.page_index > 0:
+            self.page_index -= 1
+        await self.refresh_message(interaction)
+
+    @discord.ui.button(label="▶️", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        pages = get_leaderboard_pages(self.mode)
+        if self.page_index < len(pages) - 1:
+            self.page_index += 1
+        await self.refresh_message(interaction)
+
+    class SortDropdown(discord.ui.Select):
+        def __init__(self, leaderboard_view):
+            self.leaderboard_view = leaderboard_view
+            options = [
+                discord.SelectOption(label="Level", value="level", default=leaderboard_view.mode == "level"),
+                discord.SelectOption(label="PP", value="pp", default=leaderboard_view.mode == "pp"),
+                discord.SelectOption(label="Map Rarity", value="rarity", default=leaderboard_view.mode == "rarity"),
+            ]
+            super().__init__(placeholder="Sort leaderboard by...", min_values=1, max_values=1, options=options)
+
+        async def callback(self, interaction: discord.Interaction):
+            self.leaderboard_view.mode = self.values[0]
+            self.leaderboard_view.page_index = 0
+
+            for option in self.options:
+                option.default = option.value == self.leaderboard_view.mode
+
+            await self.leaderboard_view.refresh_message(interaction)
 
 # Dropdown for selecting item categories in inventory views
 class ItemCategorySelect(discord.ui.Select):
@@ -1817,6 +2229,9 @@ class SellingPaginator(discord.ui.View):
                 kept_maps.append(m)
 
         self.user.maps = kept_maps
+
+        if getattr(self.user, 'equipped_map_id', None) is not None and self.user.get_equipped_map() is None:
+            self.user.equipped_map_id = None
         
         rewards = await give_rewards(removed_difficulties)
         
@@ -1871,7 +2286,167 @@ class SellingPaginator(discord.ui.View):
             self.paginator.update_pages()
             await interaction.response.edit_message(embed=self.paginator.make_embed(), view=self.paginator)
 
-            
+
+class EquipMapView(discord.ui.View):
+    def __init__(self, user, maps, username, author: discord.User, per_page=5):
+        super().__init__(timeout=120)
+        self.user = user
+        self.author_id = author.id
+        self.username = username
+        self.per_page = per_page
+        self.index = 0
+        self.selected_map_id = getattr(user, "equipped_map_id", None)
+        self.maps = self._flatten_maps(maps)
+        self.pages = chunk_list(self.maps, per_page)
+        self._update_buttons()
+
+    def _flatten_maps(self, maps):
+        result = []
+
+        for ubmo in maps:
+            for diff in getattr(ubmo, "difficulties", []):
+                result.append({
+                    "id": diff.id,
+                    "parent_id": diff.parent_id,
+                    "title": diff.title,
+                    "artist": diff.artist,
+                    "difficulty_name": diff.difficulty_name,
+                    "star_rating": getattr(diff, "sr", 0),
+                    "rarity": getattr(diff, "rarity", 0),
+                    "duplicates": getattr(diff, "duplicates", 0)
+                })
+
+        # Sort by rarity descending (rarest first)
+        result.sort(key=lambda x: x["rarity"], reverse=True)
+
+        return result
+
+    def _get_selected_text(self):
+        if self.selected_map_id is None:
+            return "None"
+
+        selected = next((item for item in self.maps if item["id"] == self.selected_map_id), None)
+        if selected is None:
+            return "None"
+
+        return f"{selected['title']} [{selected['difficulty_name']}] • ⭐ {selected['star_rating']}"
+
+    def _update_buttons(self):
+        for button in (self.sm1, self.sm2, self.sm3, self.sm4, self.sm5):
+            button.style = discord.ButtonStyle.secondary
+            button.disabled = True
+
+        current_page = self.pages[self.index] if self.pages else []
+
+        for index, button in enumerate((self.sm1, self.sm2, self.sm3, self.sm4, self.sm5), start=1):
+            if index <= len(current_page):
+                button.disabled = False
+                item = current_page[index - 1]
+                button.style = discord.ButtonStyle.success if item["id"] == self.selected_map_id else discord.ButtonStyle.primary
+
+        self.previous.disabled = self.index == 0
+        self.next.disabled = self.index >= len(self.pages) - 1
+
+    def make_embed(self):
+        embed = discord.Embed(
+            title=f"{self.username}'s Equip Map Menu",
+            color=discord.Color.blurple()
+        )
+
+        if not self.pages or not self.pages[self.index]:
+            embed.add_field(
+                name="No maps available",
+                value="Use o!roll to get maps first.",
+                inline=False
+            )
+            return embed
+
+        lines = []
+        for index, item in enumerate(self.pages[self.index], start=1):
+            prefix = "✅ " if item["id"] == self.selected_map_id else ""
+            lines.append(
+                f"{get_star_emoji(item['star_rating'])} {prefix}**{index}.** {item['title']} — {item['artist']} [{item['difficulty_name']}] "
+                f"• ⭐ {item['star_rating']} (rarity 1 in {format_number(item['rarity'])}) x{item['duplicates']}"
+            )
+
+        embed.description = "\n".join(lines)
+        embed.add_field(name="Selected Map", value=self._get_selected_text(), inline=False)
+        embed.set_footer(text=f"Page {self.index + 1}/{max(1, len(self.pages))}")
+        return embed
+
+    @discord.ui.button(label="1️⃣", style=discord.ButtonStyle.primary)
+    async def sm1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._select_slot(interaction, 0)
+
+    @discord.ui.button(label="2️⃣", style=discord.ButtonStyle.primary)
+    async def sm2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._select_slot(interaction, 1)
+
+    @discord.ui.button(label="3️⃣", style=discord.ButtonStyle.primary)
+    async def sm3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._select_slot(interaction, 2)
+
+    @discord.ui.button(label="4️⃣", style=discord.ButtonStyle.primary)
+    async def sm4(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._select_slot(interaction, 3)
+
+    @discord.ui.button(label="5️⃣", style=discord.ButtonStyle.primary)
+    async def sm5(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._select_slot(interaction, 4)
+
+    async def _select_slot(self, interaction: discord.Interaction, slot_index: int):
+        current_page = self.pages[self.index] if self.pages else []
+        if slot_index >= len(current_page):
+            await interaction.response.edit_message(embed=self.make_embed(), view=self)
+            return
+
+        self.selected_map_id = current_page[slot_index]["id"]
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    @discord.ui.button(label="◀️", style=discord.ButtonStyle.secondary)
+    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index > 0:
+            self.index -= 1
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    @discord.ui.button(label="▶️", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.index < len(self.pages) - 1:
+            self.index += 1
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.selected_map_id is None:
+            await interaction.response.send_message(
+                "Please select a map to equip first.",
+                ephemeral=True
+            )
+            return
+
+        self.user.equipped_map_id = self.selected_map_id
+        await update_user(self.user)
+
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.make_embed(), view=self)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "❌ This menu isn’t yours.",
+                ephemeral=True
+            )
+            return False
+        return True
+
+
 ###########################################################
 
 rolling_disabled = False
@@ -2181,6 +2756,54 @@ async def show_devs(ctx):
     embed.add_field(name="Extended Developers", value="\n".join(extended_lines) if extended_lines else "None", inline=False)
 
     await ctx.message.reply(embed=embed, mention_author=False)
+
+
+@client.command("add_fake_users")
+async def add_fake_users(ctx, amount: int = 10):
+    if ctx.author.id not in DEV_USER_IDS:
+        await ctx.message.reply("You do not have the permission to use this command.")
+        return
+
+    if amount < 1:
+        await ctx.message.reply("Amount must be at least 1.")
+        return
+
+    if amount > 500:
+        await ctx.message.reply("Amount is too high. Max is 500 per command.")
+        return
+
+    created_users = []
+    next_id = get_next_fake_user_id()
+
+    for _ in range(amount):
+        fake_user = await build_fake_user(next_id)
+        await update_user(fake_user)
+        created_users.append(fake_user)
+        next_id += 1
+
+    await write_stored_variable()
+    await refresh_leaderboard()
+
+    preview_names = ", ".join(user.display_name for user in created_users[:5])
+    if len(created_users) > 5:
+        preview_names += ", ..."
+
+    await ctx.message.reply(
+        f"Created {format_number(len(created_users))} fake user(s). {preview_names}"
+    )
+
+
+@client.command("clear_fake_users")
+async def clear_fake_users(ctx):
+    if ctx.author.id not in DEV_USER_IDS:
+        await ctx.message.reply("You do not have the permission to use this command.")
+        return
+
+    removed_count = await clear_fake_users_from_store()
+    await write_stored_variable()
+    await refresh_leaderboard()
+
+    await ctx.message.reply(f"Removed {format_number(removed_count)} fake user(s).")
         
 # Add all difficulties to sorted file for sorting (dev only). Step 1
 @client.command("load_diffs_sorted")
@@ -2231,7 +2854,8 @@ async def getmap(ctx, id, bmid, amount=1):
             if i["id"] == int(bmid):
                 result = i
         
-        embed = discord.Embed(title=f"You rolled {result['title']}[{result['difficulty_name']}]! (1 in {format_number(result['rarity'])})", description=f"Star Rating: {result['star_rating']} ⭐", color=await get_star_color(result['star_rating']), timestamp=datetime.datetime.now())
+        relative_rarity = result['rarity'] / userdata.luck_mult
+        embed = discord.Embed(title=f"You rolled {result['title']}[{result['difficulty_name']}]! (1 in {format_number(result['rarity'])})", description=f"Star Rating: {result['star_rating']} ⭐\n*Relative Rarity: 1 in {format_number(relative_rarity)}*", color=await get_star_color(result['star_rating']), timestamp=datetime.datetime.now())
         embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{res['id']}/covers/cover.jpg")
         embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{res['id']}l.jpg")
         
@@ -2305,7 +2929,8 @@ async def roll_random(ctx):
         
         result = await get_random_map(luck_mult)
         
-        embed = discord.Embed(title=f"You rolled {result['title']}[{result['difficulty_name']}]! (1 in {format_number(result['rarity'])})", description=f"Star Rating: {result['star_rating']} ⭐", color=await get_star_color(result['star_rating']), timestamp=datetime.datetime.now())
+        relative_rarity = result['rarity'] / luck_mult
+        embed = discord.Embed(title=f"You rolled {result['title']}[{result['difficulty_name']}]! (1 in {format_number(result['rarity'])})", description=f"Star Rating: {result['star_rating']} ⭐\n*Relative Rarity: 1 in {format_number(relative_rarity)}*", color=await get_star_color(result['star_rating']), timestamp=datetime.datetime.now())
         embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{result['id']}/covers/cover.jpg")
         embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{result['id']}l.jpg")
         
@@ -2325,10 +2950,19 @@ async def roll_random(ctx):
         await userdata.register_roll()
         
         await userdata.add_map(ubmd)
-        
+
+        is_new_rarest = result["rarity"] > getattr(userdata, "rarest_rolled_rarity", 0)
+        if is_new_rarest:
+            userdata.rarest_rolled_rarity = result["rarity"]
+
         await update_user(userdata)
         
         await ctx.message.reply(embed=embed)
+        
+        if is_new_rarest:
+            await ctx.message.reply(
+                f"You have rolled a new rarest map with a rarity of 1 in {format_number(result['rarity'])}!"
+            )
         
         xp_needed = xp_to_next_level(userdata.level)
         bar = await xp_bar(userdata.xp, xp_needed)
@@ -2344,7 +2978,7 @@ async def roll_random(ctx):
         
     await ctx.message.reply("Rolling had been temporarily disabled by the developer.")
 
-# Check user's level, XP and XP progress bar (soon this will be displayed in a profile page instead of a command)
+# Check user's level, XP and XP progress bar
 @client.command("level")
 async def level(ctx):
     userdata = await login(ctx.author.id)
@@ -2356,6 +2990,124 @@ async def level(ctx):
         f"Level {format_number(userdata.level)} - {bar} - {format_number(userdata.level+1)}\n"
         f"{format_number(userdata.xp)}/{format_number(xp_needed)} XP"
     ))
+
+
+@client.command("profile")
+async def profile(ctx, target: discord.User = None):
+    target = target or ctx.author
+    userdata = await login(target.id)
+    userdata.recalculate_luck()
+
+    xp_needed = xp_to_next_level(userdata.level)
+    bar = await xp_bar(userdata.xp, xp_needed)
+    inventory_rarity = calculate_inventory_rarity_total(userdata)
+
+    diff_count = sum(len(ubmo.difficulties) for ubmo in getattr(userdata, "maps", []))
+    total_copies = sum(
+        int(getattr(diff, "duplicates", 0))
+        for ubmo in getattr(userdata, "maps", [])
+        for diff in getattr(ubmo, "difficulties", [])
+    )
+
+    rank = await get_leaderboard_rank_for_user(userdata)
+    rank_text = f"#{rank}" if rank is not None else "Not ranked"
+
+    ranks = await get_all_leaderboard_ranks_for_user(userdata)
+    
+    if ctx.message.author.avatar == None:
+        url = "https://osu.ppy.sh/images/layout/avatar-guest.png"
+    else:
+        url = ctx.message.author.avatar.url
+
+    embed = discord.Embed(
+        title=f"{target.display_name if getattr(target, 'display_name', None) else target.name}'s Profile",
+        color=await get_star_color(0),
+        timestamp=datetime.datetime.now()
+    )
+    
+    embed.set_thumbnail(url=url)
+
+    embed.add_field(name="Level Rank", value=f"#{ranks.get('level', 'Not ranked')}", inline=True)
+    embed.add_field(name="PP Rank", value=f"#{ranks.get('pp', 'Not ranked')}", inline=True)
+    embed.add_field(name="Rarity Rank", value=f"#{ranks.get('rarity', 'Not ranked')}", inline=True)
+    embed.add_field(name="Level", value=f"{format_number(userdata.level)}", inline=True)
+    embed.add_field(name="PP", value=f"{format_number(userdata.pp)}", inline=True)
+    embed.add_field(name="Luck Multiplier", value=f"{format_number(userdata.luck_mult)}x", inline=True)
+    embed.add_field(name="XP", value=f"{format_number(userdata.xp)}/{format_number(xp_needed)}", inline=True)
+    embed.add_field(name="XP Progress", value=bar, inline=False)
+    embed.add_field(name="Inventory Rarity", value=f"1 in {format_number(inventory_rarity)}", inline=True)
+    embed.add_field(name="Maps", value=f"{format_number(diff_count)} difficulty(s) / {format_number(total_copies)} total copies", inline=True)
+
+    embed.add_field(
+        name="Rarest Rolled Map Rarity",
+        value=(f"1 in {format_number(userdata.rarest_rolled_rarity)}" if userdata.rarest_rolled_rarity else "None yet"),
+        inline=True
+    )
+    embed.add_field(name="Equipped Items", value=format_equipped_items(userdata), inline=False)
+
+    equipped_map = userdata.get_equipped_map()
+    if equipped_map is not None:
+        embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{equipped_map.parent_id}/covers/cover.jpg")
+        embed.add_field(
+            name="Equipped Map",
+            value=(
+                f"{equipped_map.title} [{equipped_map.difficulty_name}] • ⭐ {equipped_map.sr} "
+                f"(rarity 1 in {format_number(getattr(equipped_map, 'rarity', 0))})"
+            ),
+            inline=False
+        )
+        
+        embed.color = await get_star_color(equipped_map.sr)
+    else:
+        embed.add_field(name="Equipped Map", value="None", inline=False)
+
+    await ctx.message.reply(embed=embed, mention_author=False)
+
+
+@client.command("equip_map")
+async def equip_map(ctx):
+    userid = ctx.author.id
+
+    if userid in active_views:
+        msg, view = active_views.pop(userid)
+
+        for child in view.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+
+        try:
+            await msg.edit(view=view)
+        except discord.NotFound:
+            pass
+
+        await ctx.reply("Your previous menu was disabled.", mention_author=False)
+
+    await login(userid)
+    userdata = await login(userid)
+
+    if not getattr(userdata, 'maps', []):
+        await ctx.message.reply("You have no maps to equip. Roll some maps first.")
+        return
+
+    view = EquipMapView(userdata, userdata.maps, ctx.author.display_name, ctx.author)
+    msg = await ctx.send(embed=view.make_embed(), view=view)
+    active_views[userid] = (msg, view)
+
+
+@client.command("leaderboard")
+async def leaderboard(ctx):
+    await login(ctx.author.id)
+
+    if leaderboard_next_refresh_at is None:
+        await refresh_leaderboard()
+
+    embed = build_leaderboard_embed("level")
+    if embed is None:
+        await ctx.message.reply("No players are on the leaderboard yet.")
+        return
+
+    leaderboard_view = LeaderboardView(ctx.author, initial_mode="level")
+    await ctx.message.reply(embed=embed, view=leaderboard_view)
 
 # Clear userdata of a specific user (dev only, risky)
 @client.command("clear_userdata")
@@ -2482,6 +3234,9 @@ async def help(ctx):
         value=(
             "`o!balance` — Check your current PP balance.\n"
             "`o!level` — View your level, XP, and progress toward the next level.\n"
+            "`o!profile [@user]` — View your profile or another player's profile.\n"
+            "`o!equip_map` — Equip one of your maps as your favourite.\n"
+            "`o!leaderboard` — View the ranked player leaderboard and next refresh time.\n"
             "`o!luckmult` — Check your current luck multiplier."
         ),
         inline=False
@@ -2927,6 +3682,8 @@ async def devhelp(ctx):
                 "`o!add_extended_dev <@user>` — Grant extended developer permissions to a user (core devs only).\n"
                 "`o!remove_extended_dev <@user>` — Remove extended developer permissions from a user (core devs only).\n"
                 "`o!show_devs` — Show current core and extended developer lists.\n"
+                "`o!add_fake_users [amount]` — Add fake users with random stats and maps for leaderboard testing.\n"
+                "`o!clear_fake_users` — Remove all fake users from the database.\n"
                 "`o!give_dev <item_id or [item_id1,item_id2,...]> <amount>` — Give yourself a specific item or multiple items for testing (check item IDs in shop/crafting menu/inventory).\n"
                 "`o!change_year <year>` — Change the query year for beatmap loading (e.g. to load only maps ranked before a certain year).\n"
                 "`o!toggle_rolling` — Enable or disable rolling for all users."

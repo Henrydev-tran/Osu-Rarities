@@ -10,7 +10,7 @@ import time
 
 # User class for...users obviously why do you even need this comment
 class User:
-    def __init__(self, id, maps=[], items={}, pp=0, rolls_amount=25, rank=0, roll_max=25, luck_mult=1, xp=0, level=1, dev_luck_base=1, roll_cooldown=1.0, roll_window_seconds=300, roll_timestamps=None):
+    def __init__(self, id, maps=[], items={}, pp=0, rolls_amount=25, rank=0, roll_max=25, luck_mult=1, xp=0, level=1, dev_luck_base=1, roll_cooldown=1.0, roll_window_seconds=300, roll_timestamps=None, display_name=None, is_fake=False, equipped_map_id=None, rarest_rolled_rarity=0):
         self.id = id
         self.maps = maps
         self.items = items
@@ -25,6 +25,10 @@ class User:
         self.xp = xp
         self.level = level
         self.dev_luck_base = dev_luck_base
+        self.display_name = display_name
+        self.is_fake = is_fake
+        self.equipped_map_id = equipped_map_id
+        self.rarest_rolled_rarity = rarest_rolled_rarity
     
     async def add_map(self, map):
         for i in self.maps:
@@ -119,6 +123,18 @@ class User:
         self.luck_mult = round(playerluck)
         return self.luck_mult
                 
+    def get_equipped_map(self):
+        equipped_id = getattr(self, 'equipped_map_id', None)
+        if equipped_id is None:
+            return None
+
+        for ubmo in self.maps:
+            for diff in getattr(ubmo, 'difficulties', []):
+                if diff.id == equipped_id:
+                    return diff
+
+        return None
+
     def remove_item_by_id(self, id, amount):
         obj = self.find_item_by_id(id)
         if obj is not None:
@@ -192,6 +208,9 @@ class User:
             ubmo.difficulties = remaining_difficulties
 
         self.maps = [ubmo for ubmo in self.maps if ubmo.difficulties]
+
+        if getattr(self, 'equipped_map_id', None) is not None and self.get_equipped_map() is None:
+            self.equipped_map_id = None
         
     def add_item_by_id(self, id, amount):
         obj = self.find_item_by_id(id)
@@ -318,6 +337,10 @@ async def Dict_To_User(data):
         data.get("roll_cooldown", 1.0),
         data.get("roll_window_seconds", 300),
         data.get("roll_timestamps", []),
+        data.get("display_name"),
+        data.get("is_fake", False),
+        data.get("equipped_map_id", None),
+        data.get("rarest_rolled_rarity", 0),
     )
     
     return result
