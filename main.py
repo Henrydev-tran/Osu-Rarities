@@ -3705,4 +3705,4 @@ async def devhelp(ctx):
     else:
         await ctx.message.reply("You do not have the permission to use this command.")
 
-client.run(os.getenv("tester_token"))
+client.run(os.getenv("token"))
