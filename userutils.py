@@ -10,25 +10,40 @@ import time
 
 # User class for...users obviously why do you even need this comment
 class User:
-    def __init__(self, id, maps=[], items={}, pp=0, rolls_amount=25, rank=0, roll_max=25, luck_mult=1, xp=0, level=1, dev_luck_base=1, roll_cooldown=1.0, roll_window_seconds=300, roll_timestamps=None, display_name=None, is_fake=False, equipped_map_id=None, rarest_rolled_rarity=0):
+    DEFAULTS = {
+        "pp": 0,
+        "rolls_amount": 25,
+        "rank": 0,
+        "roll_max": 25,
+        "luck_mult": 1,
+        "xp": 0,
+        "level": 1,
+        "dev_luck_base": 1,
+        "roll_cooldown": 1.0,
+        "roll_window_seconds": 300,
+        "roll_timestamps": [],
+        "display_name": None,
+        "is_fake": False,
+        "equipped_map_id": None,
+        "rarest_rolled_rarity": 0,
+    }
+
+    def __init__(self, id, maps=[], items={}, **kwargs):
         self.id = id
         self.maps = maps
         self.items = items
-        self.pp = pp
-        self.rolls_amount = rolls_amount
-        self.rank = rank
-        self.roll_max = roll_max
-        self.roll_cooldown = float(roll_cooldown)
-        self.roll_window_seconds = int(roll_window_seconds)
-        self.roll_timestamps = roll_timestamps if roll_timestamps is not None else []
-        self.luck_mult = luck_mult
-        self.xp = xp
-        self.level = level
-        self.dev_luck_base = dev_luck_base
-        self.display_name = display_name
-        self.is_fake = is_fake
-        self.equipped_map_id = equipped_map_id
-        self.rarest_rolled_rarity = rarest_rolled_rarity
+        
+        # Set default values
+        for key, default in self.DEFAULTS.items():
+            value = kwargs.get(key, default)
+            if key == "roll_timestamps" and value is None:
+                value = []
+            setattr(self, key, value)
+        
+        # Set any extra fields from kwargs
+        for k, v in kwargs.items():
+            if k not in self.DEFAULTS and not hasattr(self, k):
+                setattr(self, k, v)
     
     async def add_map(self, map):
         for i in self.maps:
@@ -322,26 +337,9 @@ async def Dict_To_User(data):
         
     
     dev_luck_base = data.get("dev_luck_base", data.get("luck_mult", 1))
-    result = User(
-        data["id"],
-        maps,
-        items,
-        data.get("pp", 0),
-        data.get("rolls_amount", 25),
-        data.get("rank", 0),
-        data.get("roll_max", 25),
-        data.get("luck_mult", 1),
-        data.get("xp", 0),
-        data.get("level", 1),
-        dev_luck_base,
-        data.get("roll_cooldown", 1.0),
-        data.get("roll_window_seconds", 300),
-        data.get("roll_timestamps", []),
-        data.get("display_name"),
-        data.get("is_fake", False),
-        data.get("equipped_map_id", None),
-        data.get("rarest_rolled_rarity", 0),
-    )
+    kwargs = {k: v for k, v in data.items() if k not in ["id", "maps", "items"]}
+    kwargs["dev_luck_base"] = dev_luck_base  # Ensure it's set
+    result = User(data["id"], maps, items, **kwargs)
     
     return result
 

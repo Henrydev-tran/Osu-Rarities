@@ -135,22 +135,12 @@ async def User_To_Dict(user):
         "id": user.id,
         "maps": maps,
         "items": items,
-        "pp": user.pp,
-        "rolls_amount": user.rolls_amount,
-        "rank": user.rank,
-        "roll_max": user.roll_max,
-        "roll_cooldown": getattr(user, "roll_cooldown", 1.0),
-        "roll_window_seconds": getattr(user, "roll_window_seconds", 300),
-        "roll_timestamps": getattr(user, "roll_timestamps", []),
-        "luck_mult": user.luck_mult,
-        "dev_luck_base": getattr(user, "dev_luck_base", 1),
-        "xp": user.xp,
-        "level": user.level,
-        "display_name": getattr(user, "display_name", None),
-        "is_fake": getattr(user, "is_fake", False),
-        "equipped_map_id": getattr(user, "equipped_map_id", None),
-        "rarest_rolled_rarity": getattr(user, "rarest_rolled_rarity", 0)
     }
+    
+    # Automatically save all default fields
+    from userutils import User
+    for key, default in User.DEFAULTS.items():
+        result[key] = getattr(user, key, default)
     
     return result
 
