@@ -23,7 +23,7 @@ from loadmaps import *
 from probabilitycalc import *
 from math import ceil
 from collections import Counter
-from userutils import xp_to_next_level
+from userutils import xp_to_next_level, give_daily_rewards
 
 from item import SHARDS_BY_ID, SHARD_CORE_RECIPES, ALL_RECIPES, ITEMS_BY_ID, SHOP_ITEMS, PERIPHERAL_TYPES
 
@@ -327,7 +327,6 @@ async def resolve_leaderboard_name(user_id: int) -> str:
         return str(user_id)
 
     return getattr(fetched_user, "display_name", None) or getattr(fetched_user, "global_name", None) or fetched_user.name
-
 
 async def refresh_leaderboard():
     global leaderboard_cache, leaderboard_details, leaderboard_last_refresh_at, leaderboard_next_refresh_at
@@ -3463,7 +3462,28 @@ async def t1(ctx, id):
     userdata = await login(ctx.author.id)
     
     await ctx.message.reply(await userdata.count_item_by_id(id))
+    
+@client.command("daily")
+async def daily(ctx):
+    userdata = await login(ctx.author.id)
+    
+    can_claim, retry_after = await userdata.can_claim_daily()
+    
+    def format_duration(seconds):
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+
+        return f"{int(hours)} hours, {int(minutes)} minutes, {int(secs)} seconds"
+    
+    if can_claim:
+        reward = await give_daily_rewards(userdata)
+        await update_user(userdata)
+        await ctx.message.reply(f"You claimed your daily reward: {reward} PP")
         
+    else:
+        await ctx.message.reply(f"You cannot claim your daily reward yet. You can claim your daily reward in {format_duration(retry_after)}.")
+
 # Inventory command to check user's maps
 @client.command("maps")
 async def maps(ctx, id = None):
@@ -3705,4 +3725,4 @@ async def devhelp(ctx):
     else:
         await ctx.message.reply("You do not have the permission to use this command.")
 
-client.run(os.getenv("token"))
+client.run(os.getenv("tester_token"))

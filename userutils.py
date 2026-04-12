@@ -8,6 +8,8 @@ from item import SHARDS, STARESSENCE
 import copy
 import time
 
+import datetime
+
 # User class for...users obviously why do you even need this comment
 class User:
     DEFAULTS = {
@@ -26,6 +28,8 @@ class User:
         "is_fake": False,
         "equipped_map_id": None,
         "rarest_rolled_rarity": 0,
+        "daily_streak": 0,
+        "last_daily": 0,
     }
 
     def __init__(self, id, maps=[], items={}, **kwargs):
@@ -60,6 +64,23 @@ class User:
     
     async def add_mapper(self, mapper):
         self.mappers.append(mapper)
+        
+    async def can_claim_daily(self):
+        # Returns whether the user can claim their daily reward, and if not, how many seconds until they can claim again, if available, then seconds is 0
+        now = datetime.datetime.now()
+        
+        if self.last_daily is 0:
+            return True, 0
+        
+        last_daily_time = datetime.datetime.fromisoformat(self.last_daily)
+        time_diff = now - last_daily_time
+        
+        if time_diff >= datetime.timedelta(days=1):
+            return True, 0
+        
+        else:
+            retry_after = (last_daily_time + datetime.timedelta(days=1) - now).total_seconds()
+            return False, retry_after
     
     def add_item(self, item, type):
         if type == "Shard":
@@ -413,6 +434,17 @@ class SellRewards:
     
     async def get_pp(self):
         return self.pp 
+    
+async def give_daily_rewards(user):
+    rewards = 400  # base daily reward, can be modified by streaks, events, etc.
+    streak_bonus = 50 * user.daily_streak  # example: 10 extra pp per day in the streak
+    rewards += streak_bonus
+    
+    user.daily_streak += 1
+    user.last_daily = datetime.datetime.now().isoformat()
+    await user.change_pp(rewards)
+    
+    return rewards
 
 # Calculate which shards to give player based on probabilities
 # Algorithm in dev-notes
