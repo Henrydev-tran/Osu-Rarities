@@ -69,7 +69,7 @@ class User:
         # Returns whether the user can claim their daily reward, and if not, how many seconds until they can claim again, if available, then seconds is 0
         now = datetime.datetime.now()
         
-        if self.last_daily is 0:
+        if self.last_daily == 0:
             return True, 0
         
         last_daily_time = datetime.datetime.fromisoformat(self.last_daily)
@@ -440,11 +440,24 @@ async def give_daily_rewards(user):
     streak_bonus = 50 * user.daily_streak  # example: 10 extra pp per day in the streak
     rewards += streak_bonus
     
-    user.daily_streak += 1
+    streak_reset = False
+    streak_reset_days = 0
+    
+    now = datetime.datetime.now()
+    diff = now - user.last_daily
+    
+    if diff > datetime.timedelta(days=1):
+        user.daily_streak -= 1
+        if user.daily_streak < 0:
+            user.daily_streak = 0
+            
+        streak_reset = True
+        streak_reset_days = diff.days - 1  # number of days missed beyond the 1-day grace period
+    
     user.last_daily = datetime.datetime.now().isoformat()
     await user.change_pp(rewards)
     
-    return rewards
+    return rewards, streak_reset, streak_reset_days
 
 # Calculate which shards to give player based on probabilities
 # Algorithm in dev-notes

@@ -3036,6 +3036,7 @@ async def profile(ctx, target: discord.User = None):
     embed.add_field(name="XP Progress", value=bar, inline=False)
     embed.add_field(name="Inventory Rarity", value=f"1 in {format_number(inventory_rarity)}", inline=True)
     embed.add_field(name="Maps", value=f"{format_number(diff_count)} difficulty(s) / {format_number(total_copies)} total copies", inline=True)
+    embed.add_field(name="Daily Streak", value=f"{format_number(userdata.daily_streak)} day(s)", inline=True)
 
     embed.add_field(
         name="Rarest Rolled Map Rarity",
@@ -3477,9 +3478,12 @@ async def daily(ctx):
         return f"{int(hours)} hours, {int(minutes)} minutes, {int(secs)} seconds"
     
     if can_claim:
-        reward = await give_daily_rewards(userdata)
+        reward, streak_reset, streak_reset_days = await give_daily_rewards(userdata)
         await update_user(userdata)
-        await ctx.message.reply(f"You claimed your daily reward: {reward} PP")
+        await ctx.message.reply(f"You claimed your daily reward: {reward} PP | Streak: {userdata.daily_streak} days")
+        
+        if streak_reset:
+            await ctx.message.reply(f"You haven't claimed your daily reward in {streak_reset_days} days. Your daily streak has been lowered by {streak_reset} day(s). Your current streak is now {userdata.daily_streak} days.")
         
     else:
         await ctx.message.reply(f"You cannot claim your daily reward yet. You can claim your daily reward in {format_duration(retry_after)}.")
