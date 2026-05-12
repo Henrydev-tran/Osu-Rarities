@@ -4,7 +4,8 @@ import asyncio
 import random
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
+from discord.ui import Button
 
 import user_handling
 from user_handling import *
@@ -12,6 +13,8 @@ import loadmaps
 import probabilitycalc
 import jsontools
 from userutils import give_rewards, SHARD_LIST, SHARD_RANK
+
+import zipfile
 
 from dotenv import load_dotenv
 
@@ -24,20 +27,62 @@ from probabilitycalc import *
 from math import ceil
 from collections import Counter
 from userutils import xp_to_next_level, give_daily_rewards
+from maprequests import *
 
 from item import SHARDS_BY_ID, SHARD_CORE_RECIPES, ALL_RECIPES, ITEMS_BY_ID, SHOP_ITEMS, PERIPHERAL_TYPES
 
 import datetime
 
+# Very Important Variables
+_initialized = False
+MAINTENANCE = False
+ESTIMATED_MAINTENANCE_TIME = 0 # In seconds
+
+# Check or Create a new maintenance.json file to store the maintenance mode status
+def check_maintenance_file():
+    global MAINTENANCE, ESTIMATED_MAINTENANCE_TIME
+    
+    if not os.path.exists("json/maintenance.json"):
+        with open("json/maintenance.json", "w") as file:
+            file.write('{"maintenance": false, "estimated_time": 0}')
+        MAINTENANCE = False
+        ESTIMATED_MAINTENANCE_TIME = 0
+    else:
+        with open("json/maintenance.json", "r") as file:
+            content = file.read()
+            try:
+                data = json.loads(content)
+                MAINTENANCE = data.get("maintenance", False)
+                ESTIMATED_MAINTENANCE_TIME = data.get("estimated_time", 0)
+            except json.JSONDecodeError:
+                MAINTENANCE = False
+                ESTIMATED_MAINTENANCE_TIME = 0
+                
+def save_maintenance_status():
+    global MAINTENANCE, ESTIMATED_MAINTENANCE_TIME
+    
+    data = {
+        "maintenance": MAINTENANCE,
+        "estimated_time": ESTIMATED_MAINTENANCE_TIME
+    }
+    
+    with open("json/maintenance.json", "w") as file:
+        json.dump(data, file)
+                
+check_maintenance_file()
+
 client = commands.Bot(command_prefix='o!', intents=discord.Intents(message_content=True, messages=True))
 client.remove_command("help")
 
-_initialized = False
 LEADERBOARD_FILE = "json/leaderboard.json"
 LEADERBOARD_REFRESH_SECONDS = 300
 LEADERBOARD_PAGE_SIZE = 20
 LEADERBOARD_MAX_PLAYERS = 100
 FAKE_USER_ID_BASE = 9_000_000_000_000_000
+
+# If the bot is in maintenance warning period, every command the user uses will send an extra message warning them that maintenance will happen soon
+MAINTENANCE_WARNING_PERIOD = False
+MAINTENANCE_WARNING_TIME = 1800 # Warn them 30 minutes beforehand
 
 FAKE_NAME_PREFIXES = [
     "Hidden",
@@ -81,6 +126,177 @@ DEV_IDS_FILE = "json/dev_ids.json"
 DEV_USER_IDS = set(DEFAULT_DEV_USER_IDS)
 EXTENDED_DEV_USER_IDS = set(DEFAULT_EXTENDED_DEV_USER_IDS)
 
+# On Sundays, give everyone a 10 minute reminder that the bot will go on maintenance to load maps for the next week, and give everyone their daily rewards if they haven't received them yet.
+@tasks.loop(hours=24)
+async def weekend_task(skip_maintenance_warning=False, skip_weekend_check=False):
+    now = datetime.datetime.now()
+
+    if not now.weekday() in [6] and not skip_weekend_check:  # 6 = Sunday
+        return
+        
+    print("Running weekend maintenance task...")
+        
+    if not skip_maintenance_warning:
+        global MAINTENANCE_WARNING_PERIOD, MAP_REQUESTS_APPROVED_QUEUE
+        MAINTENANCE_WARNING_PERIOD = True
+        print("Maintenance warning period has started.")
+            
+        await asyncio.sleep(MAINTENANCE_WARNING_TIME)
+            
+        MAINTENANCE_WARNING_PERIOD = False
+        print("Maintenance warning period has ended.")
+            
+    enable_maintenance_mode(estimated_time=300)
+            
+    await loadmaps.loadyear(now.year)
+    
+    maps_approved = []
+    for i in MAP_REQUESTS_APPROVED_QUEUE:
+        if i.status == "approved":
+            bmobj = await loadmaps.object_load_beatmapset(i.beatmap_id)
+            maps_approved.append(bmobj)
+            loadmaps.maps.maps_json[str(i.beatmap_id)] = await Beatmap_To_Json(bmobj)
+            
+    for i in maps_approved:
+        loadmaps.maps.maps[str(i.id)] = i
+    
+    loadmaps.maps.save_to("json/maps.json")
+    
+    await rrd()
+            
+    disable_maintenance_mode()
+    print("Weekend maintenance task completed.")
+
+# Every 12 hours, backup the stored users, map requests, maps, sorteddiffs, and luck tables, 10 backups maximum            
+@tasks.loop(hours=12)
+async def backup_data():
+    # Make backup folder if it doesn't exist
+    if not os.path.exists("backups"):
+        os.makedirs("backups")
+    
+    path = "backups/backup_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + ".zip"
+    with zipfile.ZipFile(path, "w") as backup_zip:
+        backup_zip.write("json/users.json", arcname="users.json")
+        backup_zip.write("json/map_requests.json", arcname="map_requests.json")
+        backup_zip.write("json/approved_map_requests.json", arcname="approved_map_requests.json")
+        backup_zip.write("json/maps.json", arcname="maps.json")
+        backup_zip.write("json/sorteddiffs.json", arcname="sorteddiffs.json")
+        backup_zip.write("json/maintenance.json", arcname="maintenance.json")
+        backup_zip.write("json/dev_ids.json", arcname="dev_ids.json")
+        backup_zip.write("json/leaderboard.json", arcname="leaderboard.json")
+        
+        # Add luck tables
+        luck_tables_dir = "json/luck_tables"
+        for filename in os.listdir(luck_tables_dir):
+            backup_zip.write(os.path.join(luck_tables_dir, filename), arcname=f"luck_tables/{filename}")
+            
+    # Remove old backups if there are more than 10
+    backups = sorted([f for f in os.listdir("backups") if f.startswith("backup_")])
+    while len(backups) > 10:
+        os.remove(os.path.join("backups", backups[0]))
+        backups.pop(0)
+        
+    # DM the owner that a backup has been made
+    try:
+        owner = await client.fetch_user(718102801242259466)
+        await owner.send(f"Data backup completed. {path} created.")
+    except Exception as e:
+        print(f"Failed to DM owner: {e}")
+            
+        print(f"Data backup completed. {path} created.")
+
+async def load_backup(zip_path):
+    if not os.path.exists(zip_path):
+        print("Backup file not found.")
+        return
+
+    with zipfile.ZipFile(zip_path, "r") as backup_zip:
+        for member in backup_zip.infolist():
+            if member.is_dir():
+                continue
+
+            # Everything restores into json/
+            target_path = os.path.join("json", member.filename)
+
+            # Ensure folder exists
+            os.makedirs(os.path.dirname(target_path), exist_ok=True)
+
+            # Write file
+            with open(target_path, "wb") as f:
+                f.write(backup_zip.read(member))
+
+    print(f"Backup {zip_path} loaded successfully.")
+        
+async def get_latest_backup():
+    backups = sorted([f for f in os.listdir("backups") if f.startswith("backup_")], reverse=True)
+    if not backups:
+        return None
+    return os.path.join("backups", backups[0])
+
+@client.check
+async def globally_block_commands(ctx):
+    global MAINTENANCE
+    
+    if MAINTENANCE and not await ctx.bot.is_owner(ctx.author):
+        await ctx.send("The bot is currently in maintenance. Estimated time: " + (f"{format_duration(ESTIMATED_MAINTENANCE_TIME)}" if ESTIMATED_MAINTENANCE_TIME > 0 else "unknown") + "\nThe bot may be unresponsive or have limited functionality during this time.")
+        return False
+    return True
+
+@client.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CheckFailure):
+        return  # silently ignore the error
+
+    raise error
+
+def enable_maintenance_mode(estimated_time: int = 0):
+    global MAINTENANCE, ESTIMATED_MAINTENANCE_TIME
+    MAINTENANCE = True
+    ESTIMATED_MAINTENANCE_TIME = estimated_time
+    save_maintenance_status()
+    
+def disable_maintenance_mode():
+    global MAINTENANCE, ESTIMATED_MAINTENANCE_TIME
+    MAINTENANCE = False
+    ESTIMATED_MAINTENANCE_TIME = 0
+    save_maintenance_status()
+
+@client.command("maintenance")
+@commands.is_owner()
+async def maintenance(ctx, mode: str, estimated_time: int = 0):
+    global MAINTENANCE, ESTIMATED_MAINTENANCE_TIME
+
+    if mode.lower() == "on":
+        enable_maintenance_mode(estimated_time)
+        await ctx.send("Maintenance mode enabled.")
+    elif mode.lower() == "off":
+        disable_maintenance_mode()
+        await ctx.send("Maintenance mode disabled.")
+        
+@client.after_invoke
+async def maintenance_warning(ctx):
+    if MAINTENANCE_WARNING_PERIOD and not await ctx.bot.is_owner(ctx.author):
+        await ctx.send(f"⚠️ Reminder: The bot will go into maintenance in {format_duration(MAINTENANCE_WARNING_TIME)}.")
+        
+def format_duration(seconds):
+    days = seconds // 86400
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    secs = seconds % 60
+
+    result_string = ""
+    if days > 0:
+        result_string += f"{int(days)} days "
+        hours -= days * 24
+    if hours > 0:
+        result_string += f"{int(hours)} hours "
+        minutes -= hours * 60
+    if minutes > 0:
+        result_string += f"{int(minutes)} minutes "
+        secs -= minutes * 60
+    if secs > 0 or result_string == "":
+        result_string += f"{int(secs)} seconds "
+    return result_string
 
 def parse_user_id_arg(raw: str) -> int | None:
     raw = raw.strip()
@@ -391,6 +607,7 @@ async def build_fake_user(user_id: int):
         user_id,
         maps=[],
         items={},
+        map_requests=[],
         pp=random.randint(0, 5_000_000),
         xp=random.randint(0, max(0, xp_needed - 1)),
         level=level,
@@ -446,6 +663,8 @@ async def heartbeat():
 # Loads all the necessary data for the bot to function
 @client.event
 async def on_ready():
+    global MAP_REQUESTS, MAP_REQUESTS_APPROVED_QUEUE
+    
     global _initialized
     if _initialized:
         return
@@ -465,6 +684,11 @@ async def on_ready():
     print("starting probabilitycalc")
     await probabilitycalc.init_probabilitycalc()
     print("done probabilitycalc")
+    
+    print("starting load_map_requests")
+    MAP_REQUESTS = await load_map_requests()
+    MAP_REQUESTS_APPROVED_QUEUE = await load_approved_map_requests()
+    print("done load_map_requests")
 
     await refresh_leaderboard()
 
@@ -2475,30 +2699,48 @@ async def loadbms(ctx, bms):
 @client.command("loadbms_intodatabase")
 async def loadbmsintodatabase(ctx, msid):
     if ctx.author.id in DEV_USER_IDS:
-        bms = None
-        
-        json_object = await return_json("json/maps.json")
-        
         try:
-            bms = json_object[str(msid)]
-        except:
-            json_object[str(msid)] = await load_beatmapset(msid)
-            await save_to_json("json/maps.json", json_object)
-            
-            bms = json_object[str(msid)]
-            
-            
-            await ctx.message.reply(f"Beatmap {bms['title']} of ID {bms['id']} has been loaded into the database.")
-        else:
-            bms = json_object[str(msid)]
-            
+            result = await load_map_to_database(msid)
+        except Exception as e:
+            await ctx.message.reply(f"Failed to load beatmapset {msid}: {e}")
+            return
+
+        if result == 1:
+            bms = (await return_json("json/maps.json"))[str(msid)]
             await ctx.message.reply(f"Beatmap {bms['title']} of ID {bms['id']} has already been loaded.")
             return
-        
+
+        bms = (await return_json("json/maps.json"))[str(msid)]
+        await ctx.message.reply(f"Beatmap {bms['title']} of ID {bms['id']} has been loaded into the database.")
         return
-    
+
     await ctx.message.reply("You do not have the permission to use this command.")  
-    
+
+@client.command("loadmap_to_database")
+async def loadmap_to_database_cmd(ctx, msid):
+    if ctx.author.id in DEV_USER_IDS:
+        try:
+            result = await load_map_to_database(msid)
+        except Exception as e:
+            await ctx.message.reply(f"Failed to load beatmapset {msid}: {e}")
+            return
+
+        if result == 1:
+            bms = (await return_json("json/maps.json"))[str(msid)]
+            await ctx.message.reply(f"Beatmap {bms['title']} of ID {bms['id']} has already been loaded.")
+            return
+
+        bms = (await return_json("json/maps.json"))[str(msid)]
+        await ctx.message.reply(f"Beatmap {bms['title']} of ID {bms['id']} has been loaded into the database.")
+        return
+
+    await ctx.message.reply("You do not have the permission to use this command.")
+
+async def load_map_to_database(msid):
+    beatmap_json = await load_beatmapset(msid)
+    beatmap_obj = Dict_to_Beatmap(beatmap_json)
+    return await load_object_indatabase(beatmap_obj)
+
 # Basically the function above without the discord context
 async def loadbms(msid):
     bms = None
@@ -2554,6 +2796,36 @@ async def setpp(ctx, pp):
         await update_user(userdata)
         
         await ctx.message.reply(f"PP set to {pp}.")
+        
+        return
+    
+    await ctx.message.reply("You do not have the permission to use this command.")
+    
+# Disable all rolling cooldown/caps for a user (dev only)
+@client.command("disable_cooldowns")
+async def disable_cooldowns(ctx, id = None):
+    if ctx.author.id in DEV_USER_IDS:
+        target_id = id if id is not None else ctx.author.id
+        userdata = await login(target_id)
+        userdata.disable_cooldowns()    
+        await update_user(userdata)
+        
+        await ctx.message.reply(f"Cooldowns disabled for user ID {target_id}.")
+        
+        return
+    
+    await ctx.message.reply("You do not have the permission to use this command.")
+    
+# Enable cooldowns for a user (dev only)
+@client.command("enable_cooldowns")
+async def enable_cooldowns(ctx, id = None):
+    if ctx.author.id in DEV_USER_IDS:
+        target_id = id if id is not None else ctx.author.id
+        userdata = await login(target_id)
+        userdata.enable_cooldowns()    
+        await update_user(userdata)
+        
+        await ctx.message.reply(f"Cooldowns enabled for user ID {target_id}.")
         
         return
     
@@ -2839,6 +3111,30 @@ async def calc_ranges(ctx):
         return  
     
     await ctx.message.reply("You do not have the permission to use this command.") """
+    
+@client.command("manual_backup")
+async def manual_backup(ctx):
+    if ctx.author.id in DEV_USER_IDS:
+        await backup_data()
+        await ctx.message.reply("Manual backup completed.")
+    else:
+        await ctx.message.reply("You do not have the permission to use this command.")
+        
+@client.command("restore_backup")
+async def restore_backup(ctx, time: str=None):
+    if ctx.author.id in DEV_USER_IDS:
+        # If no specfic backup is given, load the latest backup
+        path = None
+        
+        if time is None:
+            path = await get_latest_backup()
+        else:
+            path = "backups/backup_" + time + ".zip"
+        
+        await load_backup(path)
+        await ctx.message.reply("Backup restored.")
+    else:
+        await ctx.message.reply("You do not have the permission to use this command.")
 
 # Get a specific beatmap and add it to user's inventory (dev only)
 @client.command("getmap")
@@ -2879,7 +3175,254 @@ async def getmap(ctx, id, bmid, amount=1):
         return
     
     await ctx.message.reply("You do not have the permission to use this command.") 
+    
+class BeatmapRequestView(discord.ui.View):
+    def __init__(self, request, user):
+        super().__init__(timeout=None)
+        self.request = request
+        self.user = user
 
+    async def make_embed(self):
+        beatmap_json = self.request.beatmap
+        
+        print(beatmap_json)
+        
+        embed = discord.Embed(title=f"Beatmap Request: {beatmap_json['title']}", description=f"Artist: {beatmap_json['artist']}\nMapper: {beatmap_json['mapper']}\n", color=discord.Color.blurple(), timestamp=datetime.datetime.now())
+        
+        for diff in beatmap_json["difficulties"]:
+            embed.add_field(name=f"{get_star_emoji(diff['star_rating'])} - {diff['difficulty_name']} (⭐ {diff['star_rating']})", value=f"Rarity: 1 in {format_number(diff['rarity'])}", inline=False)
+        
+        embed.add_field(name="Requested by", value=f"<@{self.request.user_id}>")
+        embed.add_field(name="Requested at", value=self.request.time_submitted.strftime("%Y-%m-%d %H:%M:%S"))
+        
+        embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{beatmap_json['id']}/covers/cover.jpg")
+        embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{beatmap_json['id']}l.jpg")
+        
+        return embed
+    
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.request.user_id:
+            await interaction.response.send_message(
+                "❌ This request isn’t yours.",
+                ephemeral=True
+            )
+            return False
+        return True
+    
+    async def disable_buttons(self):
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+    
+    @discord.ui.button(label="Cancel Request", style=discord.ButtonStyle.danger)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            "Your beatmap request has been cancelled.",
+            ephemeral=True
+        )
+        await self.disable_buttons()
+        await interaction.message.edit(view=self)
+
+    @discord.ui.button(label="Confirm Request", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            "Your beatmap request has been confirmed.",
+            ephemeral=True
+        )
+        await self.disable_buttons()
+        await interaction.message.edit(view=self)
+        
+        self.user.add_map_request(self.request)
+        await add_map_request(self.request)
+        await update_user(self.user)
+
+@client.command("requestbeatmap")
+async def requestbeatmap(ctx, beatmap_id: int):
+    userdata = await login(ctx.author.id)
+    
+    for i in MAP_REQUESTS:
+        if beatmap_id == i.beatmap_id and i.status == "pending":
+            await ctx.message.reply("There is already a pending request for this beatmap.")
+            return
+        
+    print(MAP_REQUESTS_APPROVED_QUEUE)
+        
+    for i in MAP_REQUESTS_APPROVED_QUEUE:       
+        if beatmap_id == i.beatmap_id and i.status == "approved":
+            await ctx.message.reply("This beatmap has already been approved and is waiting in the queue.")
+            return
+        
+    can_request, reason = await can_request_beatmap(beatmap_id)
+    if not can_request:
+        await ctx.message.reply(f"You cannot request this beatmap. Reason: {reason}")
+        return
+    
+    if ctx.author.id in active_views:
+        msg, view = active_views.pop(ctx.author.id)
+
+        for child in view.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+
+        try:
+            await msg.edit(view=view)
+        except discord.NotFound:
+            pass
+        
+        await ctx.reply("Your previous menu was disabled.", mention_author=False)
+    
+    if userdata.level < 10:
+        await ctx.message.reply("You need to be at least level 10 to request beatmaps.")
+        return
+    
+    if len(userdata.active_map_requests) >= 1:
+        await ctx.message.reply("You have reached the maximum number of requested beatmaps.")
+        return
+    
+    request = MapRequest(beatmap_id, ctx.author.id, "pending", datetime.datetime.now())
+    await request.fetch_beatmap_data()
+    
+    view = BeatmapRequestView(request, userdata)
+    embed = await view.make_embed()
+    
+    msg = await ctx.message.reply(embed=embed, view=view)
+    active_views[ctx.author.id] = (msg, view)  # Store the view with a message reference for now
+    
+@client.command("myrequests")
+async def myrequests(ctx):
+    userdata = await login(ctx.author.id)
+    
+    if len(userdata.active_map_requests) == 0:
+        await ctx.message.reply("You have no beatmap requests.")
+        return
+    
+    lines = []
+    for req in userdata.active_map_requests:
+        status_emoji = "⏳" if req.status == "pending" else ("✅" if req.status == "approved" else "❌")
+        
+        position_in_queue = ""
+        if req.status == "pending":
+            position_in_queue =  f" | Position in queue: {get_request_queue_position(req)}"
+        
+        lines.append(f"{status_emoji} Beatmap ID: {req.beatmap_id} | Requested at: {req.time_submitted.strftime('%Y-%m-%d %H:%M:%S')} | Status: {req.status}" + position_in_queue)
+    
+    embed = discord.Embed(title="My Beatmap Requests", description="\n".join(lines), color=discord.Color.blue())
+    embed.set_footer(text="Total queue: " + str(len(MAP_REQUESTS)))
+    await ctx.message.reply(embed=embed)
+
+class AdminRequestApprovalView(discord.ui.View):
+    def __init__(self, requests):
+        super().__init__(timeout=None)
+        self.request = requests
+        self.current_index = 0
+        
+    async def make_embed(self):
+        beatmap_json = self.request[self.current_index].beatmap
+        
+        embed = discord.Embed(title=f"Beatmap Request: {beatmap_json['title']}", description=f"Artist: {beatmap_json['artist']}\nMapper: {beatmap_json['mapper']}\n", color=discord.Color.blurple(), timestamp=datetime.datetime.now())
+        
+        for diff in beatmap_json["difficulties"]:
+            embed.add_field(name=f"{get_star_emoji(diff['star_rating'])} - {diff['difficulty_name']} (⭐ {diff['star_rating']})", value=f"Rarity: 1 in {format_number(diff['rarity'])}", inline=False)
+        
+        embed.add_field(name="Requested by", value=f"<@{self.request[self.current_index].user_id}>")
+        embed.add_field(name="Requested at", value=self.request[self.current_index].time_submitted.strftime("%Y-%m-%d %H:%M:%S"))
+        
+        embed.set_image(url=f"https://assets.ppy.sh/beatmaps/{beatmap_json['id']}/covers/cover.jpg")
+        embed.set_thumbnail(url=f"https://b.ppy.sh/thumb/{beatmap_json['id']}l.jpg")
+        
+        return embed
+    
+    async def disable_buttons(self):
+        for child in self.children:
+            if isinstance(child, discord.ui.Button):
+                child.disabled = True
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id not in DEV_USER_IDS:
+            await interaction.response.send_message(
+                "❌ You do not have permission to approve this request.",
+                ephemeral=True
+            )
+            return False
+        return True
+    
+    @discord.ui.button(label="Approve", style=discord.ButtonStyle.success)
+    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            "You have approved this beatmap request.",
+            ephemeral=True
+        )
+
+        # Remove the request from the queue and update the messageview, if there are no more requests, disable the buttons and edit the messageview to show that there are no more requests
+        self.request.pop(self.current_index)
+        if self.current_index >= len(self.request):
+            self.current_index = max(0, len(self.request) - 1)
+        
+        await interaction.message.edit(view=self, embed=await self.make_embed())
+        
+        user = await login(self.request[self.current_index].user_id)
+        
+        user.update_map_request(self.request[self.current_index].beatmap_id, "approved")
+        
+        await approve_request(self.request[self.current_index])
+
+    @discord.ui.button(label="Reject", style=discord.ButtonStyle.danger)
+    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(
+            "You have rejected this beatmap request.",
+            ephemeral=True
+        )
+        self.request.pop(self.current_index)
+        if self.current_index >= len(self.request):
+            self.current_index = max(0, len(self.request) - 1)        
+        
+        await interaction.message.edit(view=self, embed=await self.make_embed())
+        
+        user = await login(self.request[self.current_index].user_id)
+        
+        user.update_map_request(self.request[self.current_index].beatmap_id, "denied")
+        
+        await reject_request(self.request[self.current_index])
+        
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary)
+    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_index < len(self.request) - 1:
+            self.current_index += 1
+            await interaction.response.edit_message(embed=await self.make_embed(), view=self)
+        else:
+            await interaction.response.send_message(
+                "This is the last request in the list.",
+                ephemeral=True
+            )
+            
+    @discord.ui.button(label="Previous", style=discord.ButtonStyle.secondary)
+    async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.current_index > 0:
+            self.current_index -= 1
+            await interaction.response.edit_message(embed=await self.make_embed(), view=self)
+        else:
+            await interaction.response.send_message(
+                "This is the first request in the list.",
+                ephemeral=True
+            )
+
+# Check all pending beatmap requests and approve them (dev only)
+@client.command("adminrequests")
+async def adminrequests(ctx):
+    if ctx.author.id not in DEV_USER_IDS:
+        await ctx.message.reply("You do not have the permission to use this command.")
+        return
+
+    pending_requests = [req for req in await load_map_requests() if req.status == "pending"]
+    if not pending_requests:
+        await ctx.message.reply("There are no pending requests.")
+        return
+    
+    view = AdminRequestApprovalView(pending_requests)
+    embed = await view.make_embed()
+    msg = await ctx.message.reply(embed=embed, view=view)
+    active_views[ctx.author.id] = (msg, view)  # Store the view with a message reference for now
+    
 # Set the luck multiplier of the user (dev only)
 @client.command("setluck")
 async def setluck(ctx, luck):
@@ -2898,7 +3441,17 @@ async def setluck(ctx, luck):
     
     await update_user(userdata)
     await ctx.message.reply(f"Set base luck to {format_number(int(luck))}x. Gear multipliers now apply on top of this value.")
+
+@client.command("manual_weekend_trigger")
+async def manual_weekend_trigger(ctx):
+    if ctx.author.id not in DEV_USER_IDS:
+        await ctx.message.reply("You do not have the permission to use this command.")
+        return
+
+    await weekend_task(skip_weekend_check=True, skip_maintenance_warning=True)
     
+    await ctx.message.reply("Weekend event triggered manually.")
+
 # Roll a beatmap
 @client.command("roll")
 async def roll_random(ctx):
@@ -2943,6 +3496,8 @@ async def roll_random(ctx):
         embed.add_field(name="BeatmapsetID", value=parent.id)
         embed.add_field(name="BeatmapID", value=result["id"])
         embed.add_field(name="Status", value=await get_status(parent.status))
+        
+        embed.set_footer(text=f"Rolls left: {userdata.rolls_amount}")
         
         old_level = userdata.level
         level_up = await userdata.add_xp(result["rarity"])
@@ -3206,6 +3761,24 @@ async def uov(ctx):
         
     await ctx.message.reply("You do not have the permission to use this command.")
     
+async def rrd():
+    await add_diffs_to_sorted_file()
+    await update_optimization_variables()
+    await probabilitycalc.rebuild_all_luck_tables()
+    await update_optimization_variables()
+    await load_gmaps_variable()
+    await write_stored_variable()
+
+# Reload all roll-related data after maps.json changes (dev only)
+@client.command("reload_roll_data")
+async def reload_roll_data(ctx):
+    if ctx.author.id in DEV_USER_IDS:
+        await rrd()
+        await ctx.message.reply("Reloaded roll data: sorted difficulties, luck tables, and in-memory roll variables.")
+        return
+
+    await ctx.message.reply("You do not have the permission to use this command.")
+    
 # Check available commands
 @client.command("help")
 async def help(ctx):
@@ -3463,19 +4036,12 @@ async def t1(ctx, id):
     userdata = await login(ctx.author.id)
     
     await ctx.message.reply(await userdata.count_item_by_id(id))
-    
+
 @client.command("daily")
 async def daily(ctx):
     userdata = await login(ctx.author.id)
     
     can_claim, retry_after = await userdata.can_claim_daily()
-    
-    def format_duration(seconds):
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        secs = seconds % 60
-
-        return f"{int(hours)} hours, {int(minutes)} minutes, {int(secs)} seconds"
     
     if can_claim:
         reward, streak_reset, streak_reset_days = await give_daily_rewards(userdata)
@@ -3620,8 +4186,6 @@ async def simulate(ctx, users: int = 50, actions: int = 10, mode: str = "roll"):
 
     await ctx.message.reply(f"Starting simulation: {users} users × {actions} actions... mode={mode}")
 
-    import time
-
     async def simulate_user(uid: int):
         # if mode is sell, collect rolled difficulties per user
         collected = {}
@@ -3693,7 +4257,11 @@ async def devhelp(ctx):
                 "`o!clear_all_userdata` — Clear inventory and progress of all users (use with caution!).\n"
                 "`o!clear_all_maps` — Clear all beatmaps from the database (use with caution!).\n"
                 "`o!clear_sorted_diffs` — Clear sorted difficulties and ranges data (use with caution!).\n"
-                "`o!uov` — Update optimization variables after changing maps or ranges data."
+                "`o!uov` — Update optimization variables after changing maps or ranges data.\n"
+                "`o!reload_roll_data` — Rebuild sorted difficulties and luck tables after maps.json has changed.\n"
+                "`o!loadbms_intodatabase <bmsid>` — Load a specific beatmapset ID into the database (loads all difficulties in the set)."
+                "`o!disable_cooldowns [id]` — Disable rolling cooldowns for a user.\n"
+                "`o!enable_cooldowns [id]` — Enable rolling cooldowns for a user.\n"
             ),
             inline=False
         )
@@ -3728,5 +4296,49 @@ async def devhelp(ctx):
         await ctx.send(embed=embed)
     else:
         await ctx.message.reply("You do not have the permission to use this command.")
+        
+# Attempts to run all commands available in the bot.
+@client.command("test_bot")
+async def test_bot(ctx):
+    await ctx.message.reply("Command is work in progress.")
+    
+    
+    await ctx.message.reply("Testing all commands...")
+    start = time.perf_counter()
+
+    commands_to_test = [
+        [help],
+        [luckmult],
+        [profile],
+        [level],
+        [roll_random],
+        [maps],
+        [lookup, "2422085"],
+        [item, "SHARD_COMMON"],
+        [shop],
+        [equipment],
+        [craft]
+    ]
+
+    for cmd in commands_to_test:
+        await ctx.message.reply(f"Testing command: o!{cmd[0].name} {' '.join(str(arg) for arg in cmd[1:])}")
+        
+        try:
+            if len(cmd) == 1:
+                msg = await cmd[0](ctx)
+                print(msg)
+                await msg.delete()
+            elif len(cmd) == 2:
+                msg = await cmd[0](ctx, cmd[1])
+                await msg.delete()
+            elif len(cmd) == 3:
+                msg = await cmd[0](ctx, cmd[1], cmd[2])
+                await msg.delete()
+            else:
+                await ctx.message.reply(f"Command {cmd} has too many arguments for this test.")
+        except Exception as e:
+            await ctx.message.reply(f"Error occurred while testing command {cmd}: {e}")
+            
+    await ctx.message.reply(f"Finished testing commands in {time.perf_counter() - start:.2f} seconds.")
 
 client.run(os.getenv("tester_token"))

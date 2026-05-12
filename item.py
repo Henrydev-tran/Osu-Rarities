@@ -69,6 +69,18 @@ class Tool:
         self.description = description
         self.type = type
         
+class Lootbox:
+    def __init__(self, rarity, cost, value, name, function, id, description, type, possible_rewards):
+        self.rarity = rarity
+        self.cost = cost
+        self.value = value
+        self.name = name
+        self.function = function
+        self.id = id
+        self.description = description
+        self.type = type
+        self.possible_rewards = possible_rewards
+        
 class Shard(Item):
     def __init__(self, rarity, cost, name, value, function, id, description, duplicates, type, shardrarity):
         super().__init__(rarity, cost, name, value, function, id, description, duplicates, type)

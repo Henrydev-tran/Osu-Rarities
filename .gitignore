@@ -169,6 +169,8 @@ senv/
 # Data Folders
 .json/
 json/
+backups/
+restore_temp/
 .logs/
 logs/
 *.json

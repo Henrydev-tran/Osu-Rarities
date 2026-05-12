@@ -1,5 +1,5 @@
 from loadmaps import find_ubmo, return_json, save_to_json, User_To_Dict, BeatmapDiff_To_Dict
-from jsontools import Dict_To_UBMO, UBMO_To_Dict, Dict_To_Item
+from jsontools import Dict_To_MapRequest, Dict_To_UBMO, UBMO_To_Dict, Dict_To_Item
 import random
 from raritycalculation import calculatepp
 import math, asyncio
@@ -23,6 +23,7 @@ class User:
         "dev_luck_base": 1,
         "roll_cooldown": 1.0,
         "roll_window_seconds": 300,
+        "roll_window_start": 0,
         "roll_timestamps": [],
         "display_name": None,
         "is_fake": False,
@@ -32,11 +33,12 @@ class User:
         "last_daily": 0,
     }
 
-    def __init__(self, id, maps=[], items={}, **kwargs):
+    def __init__(self, id, maps=[], items={}, map_requests=[], **kwargs):
         self.id = id
         self.maps = maps
         self.items = items
-        
+        self.active_map_requests = map_requests
+
         # Set default values
         for key, default in self.DEFAULTS.items():
             value = kwargs.get(key, default)
@@ -158,7 +160,25 @@ class User:
         # store as the user's luck multiplier
         self.luck_mult = round(playerluck)
         return self.luck_mult
-                
+    
+    def add_map_request(self, request):
+        if self.active_map_requests is None:
+            self.active_map_requests = []
+        
+        self.active_map_requests.append(request)
+        
+    def update_map_request(self, beatmap_id, new_status):
+        for request in self.active_map_requests:
+            if request.beatmap_id == beatmap_id:
+                request.status = new_status
+                break
+        
+    def remove_map_request(self, bmsid):
+        if len(self.active_map_requests) == 0:
+            return
+
+        self.active_map_requests = [request for request in self.active_map_requests if request.beatmap_id != bmsid]
+
     def get_equipped_map(self):
         equipped_id = getattr(self, 'equipped_map_id', None)
         if equipped_id is None:
@@ -258,8 +278,6 @@ class User:
         for items in self.items.values():
             found = next((obj for obj in items.values() if obj.id == id), None)
             if found is not None:
-                print(f"Found item with id {id}, duplicates: {getattr(found, 'duplicates', 0)}")
-                
                 # If the item type is a Tool, always return 1 since Tools are one-per-type
                 if getattr(found, 'type', None) == 'Tool':
                     return 1
@@ -267,6 +285,14 @@ class User:
                 return getattr(found, 'duplicates', 0)
 
         return 0
+    
+    def disable_cooldowns(self):
+        self.roll_cooldown = 0
+        self.roll_window_seconds = 0
+        
+    def enable_cooldowns(self, cooldown_seconds=1.0, window_seconds=300):
+        self.roll_cooldown = cooldown_seconds
+        self.roll_window_seconds = window_seconds
     
     def find_item_by_id(self, id):
         # Return the first matching item object by id, searching all categories
@@ -284,7 +310,7 @@ class User:
         self.pp = amount
     
     async def add_rolls(self, amount):
-        self.rolls_amount += amount
+        self.rolls_amount = min(self.roll_max, self.rolls_amount + amount)
 
     def _prune_roll_timestamps(self, now=None):
         if now is None:
@@ -293,17 +319,37 @@ class User:
         cutoff = now - self.roll_window_seconds
         self.roll_timestamps = [ts for ts in self.roll_timestamps if ts > cutoff]
 
+    def _reset_roll_window_if_needed(self, now=None):
+        if now is None:
+            now = time.time()
+
+        if self.roll_window_seconds <= 0:
+            return
+
+        if self.roll_window_start == 0:
+            return
+
+        if now - self.roll_window_start >= self.roll_window_seconds:
+            self.rolls_amount = self.roll_max
+            self.roll_window_start = now
+
     async def can_roll(self):
         now = time.time()
         self._prune_roll_timestamps(now)
+        self._reset_roll_window_if_needed(now)
 
         if self.roll_timestamps:
             next_allowed = self.roll_timestamps[-1] + self.roll_cooldown
             if now < next_allowed:
                 return False, max(0.0, next_allowed - now), "cooldown"
 
-        if len(self.roll_timestamps) >= self.roll_max:
-            retry_after = self.roll_timestamps[0] + self.roll_window_seconds - now
+        if self.roll_max == 0:
+            return False, float(self.roll_window_seconds), "roll_limit"
+
+        if self.rolls_amount <= 0:
+            retry_after = self.roll_window_seconds
+            if self.roll_window_start != 0:
+                retry_after = self.roll_window_start + self.roll_window_seconds - now
             return False, max(0.0, retry_after), "roll_limit"
 
         return True, 0.0, None
@@ -311,10 +357,17 @@ class User:
     async def register_roll(self):
         now = time.time()
         self._prune_roll_timestamps(now)
+        self._reset_roll_window_if_needed(now)
+
+        if self.roll_window_start == 0:
+            self.roll_window_start = now
+
+        self.rolls_amount = max(0, min(self.rolls_amount, self.roll_max) - 1)
         self.roll_timestamps.append(now)
 
     async def set_roll_max(self, new_roll_max):
-        self.roll_max = max(1, int(new_roll_max))
+        self.roll_max = max(0, int(new_roll_max))
+        self.rolls_amount = min(self.rolls_amount, self.roll_max)
 
     async def set_roll_cooldown(self, new_cooldown_seconds):
         # Keep a small lower bound to avoid zero/negative spam loops.
@@ -355,12 +408,13 @@ async def Dict_To_User(data):
         for key2, val2 in val1.items():
             items.setdefault(key1, {})
             items[key1][key2] = await Dict_To_Item(val2)   
-        
+    
+    map_requests = [Dict_To_MapRequest(req) for req in data.get("map_requests", [])]
     
     dev_luck_base = data.get("dev_luck_base", data.get("luck_mult", 1))
-    kwargs = {k: v for k, v in data.items() if k not in ["id", "maps", "items"]}
+    kwargs = {k: v for k, v in data.items() if k not in ["id", "maps", "items", "map_requests"]}
     kwargs["dev_luck_base"] = dev_luck_base  # Ensure it's set
-    result = User(data["id"], maps, items, **kwargs)
+    result = User(data["id"], maps, items, map_requests, **kwargs)
     
     return result
 
@@ -443,16 +497,19 @@ async def give_daily_rewards(user):
     streak_reset = False
     streak_reset_days = 0
     
-    now = datetime.datetime.now()
-    diff = now - user.last_daily
+    if user.last_daily != 0:
+        now = datetime.datetime.now()
+        diff = now - datetime.datetime.fromisoformat(user.last_daily)
     
-    if diff > datetime.timedelta(days=1):
-        user.daily_streak -= 1
-        if user.daily_streak < 0:
-            user.daily_streak = 0
+        if diff > datetime.timedelta(days=1):
+            user.daily_streak -= 1
+            if user.daily_streak < 0:
+                user.daily_streak = 0
             
-        streak_reset = True
-        streak_reset_days = diff.days - 1  # number of days missed beyond the 1-day grace period
+            streak_reset = True
+            streak_reset_days = diff.days - 1  # number of days missed beyond the 1-day grace period
+    
+    user.daily_streak += 1
     
     user.last_daily = datetime.datetime.now().isoformat()
     await user.change_pp(rewards)

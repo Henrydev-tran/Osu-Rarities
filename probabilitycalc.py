@@ -66,12 +66,11 @@ async def preload_single_luck(luck: float):
 
     luck_tables[luck] = (ranges, total_weight)
 
-async def build_luck_table(luck: float):
+async def build_luck_table(luck: int):
     global maps
     
     base_path = f"json/luck_tables/luck_{luck}x"
     os.makedirs(base_path, exist_ok=True)
-
     sorted_maps = maps
 
     ranges = []
@@ -99,6 +98,29 @@ async def build_luck_table(luck: float):
     async with aiofiles.open(f"{base_path}/total_weight.count", "w") as f:
         await f.write(str(total_weight))
 
+async def rebuild_all_luck_tables():
+    global maps
+
+    base_dir = "json/luck_tables"
+    if not os.path.exists(base_dir):
+        return
+
+    if maps is None:
+        await update_optimization_variables()
+
+    for folder in os.listdir(base_dir):
+        if not folder.startswith("luck_") or not folder.endswith("x"):
+            continue
+
+        luck_str = folder.removeprefix("luck_").removesuffix("x")
+
+        try:
+            luck = int(luck_str)
+        except ValueError:
+            continue
+
+        await build_luck_table(luck)
+
 # Add all difficulties to sorted file for sorting
 async def add_diffs_to_sorted_file():
     json_object = await return_json("json/maps.json")
@@ -108,7 +130,7 @@ async def add_diffs_to_sorted_file():
     for key in json_object:       
         loaded_json = json_object[key]
         
-        beatmap = await Dict_to_Beatmap(loaded_json)
+        beatmap = Dict_to_Beatmap(loaded_json)
         
         for i in beatmap.difficulties:
             sorted_maps.append(await BeatmapDiff_To_Dict(i))
@@ -186,6 +208,7 @@ async def update_optimization_variables():
     global maps
     
     maps = await load_all_diffs()
+    luck_tables.clear()
     await preload_all_luck_tables()
 
 # Returns the amount of loaded beatmaps
@@ -201,7 +224,7 @@ async def get_amount_beatmaps():
     return ranges"""
 
 # Returns a random index
-async def get_random_index(luck: float):
+async def get_random_index(luck: int):
     if luck not in luck_tables:
         await build_luck_table(luck)
         await preload_single_luck(luck)

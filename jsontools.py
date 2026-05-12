@@ -3,6 +3,7 @@ import aiofiles
 import json
 from item import Shard, ShardCore, Special, Gear, Gear_Peripheral, Tool
 import asyncio
+from maprequests import MapRequest
 import orjson
 import pickle
 import os
@@ -22,6 +23,7 @@ def _get_file_lock(path: str) -> asyncio.Lock:
 # Saves an object to a json path
 async def save_to_json(path, obj):
     lock = _get_file_lock(path)
+    
     async with lock:
         temp_path = path + ".tmp"
         cache = path + ".pkl"
@@ -117,6 +119,12 @@ async def Beatmap_To_Json(beatmap):
     
     return result
 
+def MapRequest_To_Dict(request: MapRequest):
+    return request.to_dict()
+
+def Dict_To_MapRequest(data):
+    return MapRequest.from_dict(data)
+
 # Returns a Dict from a given User object
 async def User_To_Dict(user):
     maps = []
@@ -130,11 +138,14 @@ async def User_To_Dict(user):
         for key2, val2 in val1.items():
             items.setdefault(key1, {})
             items[key1][key2] = await Item_To_Dict(val2)
+            
+    map_requests = [MapRequest_To_Dict(req) for req in user.active_map_requests]
     
     result = {
         "id": user.id,
         "maps": maps,
         "items": items,
+        "map_requests": map_requests,
     }
     
     # Automatically save all default fields

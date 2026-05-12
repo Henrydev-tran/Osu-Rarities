@@ -5,6 +5,7 @@ from jsontools import *
 import aiofiles
 import asyncio
 import time
+import datetime
 
 from dotenv import load_dotenv
 
@@ -113,6 +114,19 @@ async def load_beatmapset(id):
     
     return await Beatmap_To_Json(loaded_beatmap)
 
+async def object_load_beatmapset(id):
+    beatmap = await api.get_beatmapset(id)
+    
+    diffs = []
+
+    for i in beatmap.beatmaps:        
+        difficulty = Beatmap_Difficulty(i.difficulty_rating, beatmap.id, i.id, beatmap.title, beatmap.artist, i.version)
+        diffs.append(difficulty)
+    
+    loaded_beatmap = Beatmap(beatmap.id, beatmap.title, beatmap.artist, diffs, beatmap.creator, beatmap.status)
+    
+    return loaded_beatmap
+
 # Load a Beatmap object into the database, returns 1 if map already loaded, 0 if map loaded success
 async def load_object_indatabase(bmsobj):
     bms = None
@@ -130,8 +144,7 @@ async def load_object_indatabase(bmsobj):
 
 # Load the next page of beatmapsets
 async def loadnpage():
-    async with aiofiles.open("json/bmpage.count", "r") as file:
-        page = int(await file.read())
+    page = await get_page_count()
     
     page += 1
     
@@ -157,10 +170,11 @@ async def loadnpage():
         
         print(f"Mapset with ID {mapset.id} has been loaded")
     
+    print(f"Loaded page {page}")
+    
     await maps.save_to("json/maps.json")
     
-    async with aiofiles.open("json/bmpage.count", "w") as file:
-        await file.write(str(page))
+    await set_page_count(str(page))
     
     return 1
    
@@ -173,9 +187,17 @@ async def reset_page_count():
 async def set_page_count(page):
     async with aiofiles.open("json/bmpage.count", "w") as file:
         await file.write(str(page))
+        
+async def get_page_count():
+    async with aiofiles.open("json/bmpage.count", "r") as file:
+        page = int(await file.read())
+    
+    return page
 
 # Unused function, will loop through all pages of a certain year and load all beatmaps
 async def loadALL():
+    year = datetime.datetime.now().year
+    
     while True:
         result = await loadnpage()
         
@@ -186,7 +208,21 @@ async def loadALL():
             await change_year(await get_year() + 1)
             await set_query_year(await get_year())
             
-# asyncio.run(loadALL())
+        if await get_year() > year:
+            print("finished loading all maps up to current year, ending")
+            break
+
+async def loadyear(year):
+    await set_query_year(year)
+    await change_year(year)
+    await reset_page_count()
+    
+    while True:
+        result = await loadnpage()
+        
+        if result == 0:
+            print("out of beatmaps, ending")
+            break
 
 # Debug function to test speed of loading maps
 async def init_loadmaps():
